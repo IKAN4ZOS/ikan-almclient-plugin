@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<clr>
+  <project>${clr.project.name}</project>
+  <description>${clr.description}</description>
+  <level>${clr.level.name}</level>

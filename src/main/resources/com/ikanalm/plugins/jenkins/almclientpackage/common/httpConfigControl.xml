@@ -1,0 +1,42 @@
+<project name="httpConfigControl" default="httpConfigControl" basedir=".">
+    <description>Http tool Config Control</description>
+
+    <taskdef name="http" classname="org.missinglink.ant.task.http.HttpClientTask" classpathref="antext.classpath"/>
+
+    <!-- ************************************************************************* -->
+    <!-- *************** Target for controling Http configuration       ********** -->
+    <!-- ************************************************************************* -->
+    <target name="httpConfigControl">
+        <!-- httpTask version -->
+        <property name="httpTask.version"  value="1.1.5"/>
+        <propertyregex property="httpTask.version.major"
+                  input="${httpTask.version}" casesensitive="false"
+                  regexp="([0-9]+)\..*" select="\1"/>
+        <propertyregex property="httpTask.version.minor"
+                  input="${httpTask.version}" casesensitive="false"
+                  regexp="([0-9]+)\.([0-9]+)\..*" select="\1.\2"/>
+        <!-- Initiate Java Home -->
+        <condition property="httpTask.javaHome" value="${java.home}">
+           <isset property="java.home"/>
+        </condition>
+        <!-- controling httpTask Server Version -->
+        <switch value="${httpTask.version}">
+            <case value="1.1.1"> <property name="httpTask.java.version.minimal" value="6"/> </case>
+            <case value="1.1.2"> <property name="httpTask.java.version.minimal" value="7"/> </case>
+            <case value="1.1.3"> <property name="httpTask.java.version.minimal" value="8"/> </case>
+            <case value="1.1.4"> <property name="httpTask.java.version.minimal" value="9"/> </case>
+            <case value="1.1.5"> <property name="httpTask.java.version.minimal" value="9"/> </case>
+            <default>            <property name="httpTask.java.version.minimal" value="8"/> </default>
+        </switch>
+        <!-- controling java version with httpTask version -->
+        <propertyregex property="httpTask.java.version"
+                  input="${java.specification.version}" casesensitive="false"
+                  regexp="([0-9]+)\.([0-9]+)" select="\2"/>
+        <propertyregex property="httpTask.java.version"
+                  input="${java.specification.version}" casesensitive="false"
+                  regexp="([0-9]+)" select="\1"/>
+        <fail message="Java version ${httpTask.java.version} is not sufficient for the httpTask version ${httpTask.version}">
+            <condition> <islessthan arg1="${httpTask.java.version}" arg2="${httpTask.java.version.minimal}"/> </condition>
+        </fail>
+    </target>
+</project>

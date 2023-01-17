@@ -1,0 +1,70 @@
+<project name="getMachineIP" default="getMachineIP" basedir=".">
+    <description>Get Machine IP addresses and control http task/Java versions</description>
+    <!-- ************************************************** -->
+    <!-- Getting to the Public IP Address of machine        -->
+    <!-- ************************************************** -->
+    <target name="getMachineIP" depends="httpConfigControl">
+        <property name="searchIpUrl"    value="https://ipinfo.io"/>
+        <echo message="searchIpUrl=${searchIpUrl}" level="info"/>
+        <property name="get.getPublicIPLogfile" value="${basedir}/temp/getPublicIP.log"/>
+        <property name="get.message"   value="Action=Get Public address"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${searchIpUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false" outfile="${get.getPublicIPLogfile}">
+        </http>
+        <antfetch target="cleaningJsonLogResult" return="jsonLog.result">
+            <param name="jsonLog.file"  value="${get.getPublicIPLogfile}"/>
+        </antfetch>
+        <condition property="statusOK" value="true">
+          <equals arg1="${get.status}" arg2="200"/>
+        </condition>
+        <if> <not> <isset property="statusOK"/> </not>
+            <then> <echo message="WARNING: Public address cannot be found!"/> </then>
+        </if>
+        <fail message="ERROR: '${get.message}' cannot be done correctly!${line.separator}Log:${jsonLog.result}">
+            <condition>
+              <and>
+              <istrue value="${alm.stopOnError}"/>
+              <not> <isset property="statusOK"/> </not>
+              </and>
+            </condition>
+        </fail>
+        <property name="getPublicIP.result" value="${jsonLog.result}"/>
+        <propertyregex property="host.publicAddress"
+                  input="${getPublicIP.result}" casesensitive="false"
+                  regexp="(ip|address|IP Address|ip_address|ipAddress|query|geoplugin_request|geobytesremoteip)\:([0-9\.]+)," select="\2"/>
+        <propertyregex property="host.publicAddress"
+                  input="${getPublicIP.result}" casesensitive="false"
+                  regexp="ip\=([0-9\.]+)," select="\1"/>
+        <property name="host.publicAddress" value=""/>
+        <!-- Machine info -->
+        <hostinfo prefix="host"/>
+        <echo message="host=${host.NAME}; domain=${host.DOMAIN}; ipv4=${host.ADDR4}; public address=${host.publicAddress}" level="info"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Cleaning the Json response file for analyse        -->
+    <!-- ************************************************** -->
+    <target name="cleaningJsonLogResult">
+        <var name="jsonLog.result" unset="true"/>
+        <loadfile property="jsonLog.result" srcFile="${jsonLog.file}" encoding="UTF-8">
+          <filterchain>
+          <deletecharacters chars="\{\}\&quot;"/> <trim/> <ignoreblank/> <striplinebreaks/>
+          <replaceregex pattern="\ \ " replace=" " flags="g"/>
+          </filterchain>
+        </loadfile>
+        <propertyregex property="jsonLog.result" override="true"
+              input="${jsonLog.result}" casesensitive="false"
+              regexp="(\ \:)" replace=":"/>
+        <propertyregex property="jsonLog.result" override="true"
+              input="${jsonLog.result}" casesensitive="false"
+              regexp="(\:\ )" replace=":"/>
+        <propertyregex property="jsonLog.result" override="true"
+              input="${jsonLog.result}" casesensitive="false"
+              regexp="(\ \,)" replace=","/>
+        <propertyregex property="jsonLog.result" override="true"
+              input="${jsonLog.result}" casesensitive="false"
+              regexp="(\,\ )" replace=","/>
+    </target>
+</project>

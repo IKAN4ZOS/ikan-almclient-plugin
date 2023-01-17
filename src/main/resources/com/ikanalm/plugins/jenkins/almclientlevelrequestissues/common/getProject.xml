@@ -1,0 +1,206 @@
+<project name="getProject" default="getProject" basedir=".">
+    <description>Get a Project</description>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+    <target name="getProject" depends="initProjectProperties,resetProjectVariables,getOneProject,projectXmlResult,projectHtmlResult">
+        <fail message="ERROR: IKAN ALM Get Project cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="project_name_ignore"/> </not>
+                    <not> <isset property="project_found"/> </not>
+                    <isset property="project_notfound"/>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+
+        <if> <isset property="project_found"/>
+            <then>
+                <var name="project.name"              value="${project_NAME}"/>
+                <var name="project.vcrProjectName"    value="${project_VCRPROJECTNAME}"/>
+            </then>
+        </if>
+
+        <echo message="project.name=${project.name},project_found=${project_found},project_notfound=${project_notfound}" level="debug"/>
+        <antcall target="resetProjectVariables"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting Project access option                    -->
+    <!-- ************************************************** -->
+    <target name="initProjectProperties">
+	<property name="alm.stopOnError"      value="true"/>
+        <if> <equals arg1="${project.name}" arg2="None" casesensitive="false"/>
+            <then> 
+            <var name="project.name" value=""/>
+            </then>
+        </if>
+        <if> <equals arg1="${project.name}" arg2=""/>
+            <then> 
+            <var name="project.name" unset="true"/> 
+            <property name="project_name_ignore" value="true"/>
+            </then>
+        </if>
+        <if> <equals arg1="${project.oid}" arg2="0"/>
+            <then> <var name="project.oid" unset="true"/> </then>
+        </if>
+        <if> <equals arg1="${project.link}" arg2=""/>
+            <then> <var name="project.link" unset="true"/> </then>
+        </if>
+    </target>
+
+    <target name="resetProjectVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Project from Oid                           -->
+    <!-- ************************************************** -->
+    <target name="getProjectFromOid" if="project.oid">
+        <property name="get.almUrl"     value="${alm.apiUrl}/projects/${project.oid}"/>
+        <property name="get.message"    value="Get Project Oid=${project.oid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Project from Link                          -->
+    <!-- ************************************************** -->
+    <target name="getProjectFromLink" if="project.link">
+        <property name="get.almUrl"     value="${project.link}"/>
+        <property name="get.message"    value="Get Project Link=${project.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Project from Name                          -->
+    <!-- ************************************************** -->
+    <target name="getProjectFromName" if="project.name">
+        <property name="get.almUrl"     value="${alm.apiUrl}/projects?name=${project.name}&amp;page=1&amp;pagesize=10&amp;sortdirection=asc"/>
+        <property name="get.message"    value="Get Project Name=${project.name}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Project                                    -->
+    <!-- ************************************************** -->
+    <target name="getOneProject" if="get.almUrl" depends="getProjectFromOid,getProjectFromLink,getProjectFromName">
+        <property name="get.almEntity"  value="${basedir}/temp/getProject"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="404"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="projectXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="//error/cause/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="//projects/@count"  property="projects_count"/>
+            <copy path="//project/id/text()" property="project_URN"/>
+            <copy path="//project/link[@title='Project']/@href" property="project.link"/>
+            <copy path="//project/name/text()" property="project_NAME"/>
+            <copy path="//project/projecttype/id/text()" property="project_TYPE"/>
+            <copy path="//project/projecttype/text/text()" property="project_TYPE_TEXT"/>
+            <copy path="//project/projecttype/link/@href" property="project_TYPE_LINK"/>
+            <copy path="//project/description/text()" property="project_DESCRIPTION"/>
+            <copy path="//project/vcr-projectname/text()" property="project_VCRPROJECTNAME"/>
+            <copy path="//project/issuetrackingsystem/id/text()" property="its.oid"/>
+            <copy path="//project/issuetrackingsystem/link/@href" property="its.link"/>
+            <copy path="//project/vcr/id/text()" property="vcr.oid"/>
+            <copy path="//project/vcr/text/text()" property="vcr.typename"/>
+            <copy path="//project/vcr/link/@href" property="vcr.link"/>
+            <copy path="//project/admingroup/id/text()" property="project_USERGROUP"/>
+            <copy path="//project/admingroup/link/@href" property="project_USERGROUP_LINK"/>
+            <copy path="//project/usergroup/id/text()" property="project_ADMINGROUP"/>
+            <copy path="//project/usergroup/link/@href" property="project_ADMINGROUP_LINK"/>
+        </xmltask>
+        <property name="almLog.result" value="Client Error"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <property name="projects_count" value="1"/> <!-- If get by Oid or Link -->
+        <condition property="task.resultMessage" value="Message=No Project found. Error:${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <equals arg1="${projects_count}" arg2="0"/>
+        </condition>
+        <if> <isset property="project_URN"/>
+            <then>
+                <propertyregex property="project_OID"
+                      input="${project_URN}" casesensitive="false"
+                      regexp="urn\:alm\:project\:([0-9]+)\:.*" select="\1"/>
+            </then>
+        </if>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="project_OID"/> </not>
+        </condition>
+        <condition property="project_found" value="true">
+            <isset property="project_OID"/>
+        </condition>
+        <condition property="project_notfound" value="true">
+            <or>
+                <equals arg1="${task.status}" arg2="400"/>
+                <equals arg1="${projects_count}" arg2="0"/>
+            </or>
+        </condition>
+        <property name="project_VCRPROJECTNAME"    value=""/>
+        <property name="project_OID"     value="0"/>
+        <property name="project.oid"     value="${project_OID}"/>
+        <property name="project.name"    value="${project_NAME}"/>
+        <property name="alm.project.vcrProjectName"    value=""/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Project=${project_NAME}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="projectHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+</project>

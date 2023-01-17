@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<package>
+  <project>${cru.project.name}</project>
+  <projectstream>${cru.projectStream}</projectstream>
+  <description>${cru.package.description}</description>
+  <name>${cru.package.name}</name>
+  <status>${cru.package.status}</status>
+  <archived>${cru.package.archived}</archived>

@@ -1,0 +1,158 @@
+<project name="approveLevelRequest" default="approveLevelRequest" basedir=".">
+    <description>Approve a LevelRequest with approval.oid</description>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+
+	<target name="approveLevelRequest" depends="resetApproveLevelRequestVariables,postApproveLevelRequest,approveLevelRequestXmlResult,approveLevelRequestHtmlResult">
+        <fail message="ERROR: IKAN ALM Approve Level Request cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="lr_approved"/> </not>
+                    <not> <isset property="lr_notapproved"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <antcall target="resetApproveLevelRequestVariables"/>
+	</target>
+
+        <target name="resetApproveLevelRequestVariables">
+            <var name="post.almBody"   unset="true"/>
+            <var name="post.almEntity" unset="true"/>
+            <var name="post.almLogfile" unset="true"/>
+            <var name="post.almUrl"    unset="true"/>
+            <var name="post.message"   unset="true"/>
+            <var name="task.status"    unset="true"/>
+            <var name="task.message"   unset="true"/>
+            <var name="task.result"    unset="true"/>
+            <var name="task.resultMessage"   unset="true"/>
+            <var name="xmlLog.file"    unset="true"/>
+            <var name="xmlResult.log"  unset="true"/>
+            <var name="xmlResponse"    unset="true"/>
+        </target>
+
+	<!-- Approve an IKAN ALM LevelRequest using the RESTful API -->
+        <target name="approveLevelRequestBody">
+                <mkdir dir="${basedir}/temp"/>
+                <property name="post.almEntity"  value="${basedir}/temp/approveLevelRequest-${levelrequest.oid}"/>
+                <property name="post.almBody"    value="${post.almEntity}.xml"/>
+                <copy file="${dir.almModels}/alm_approveLevelRequest_xml.model"
+                    tofile="${post.almBody}" overwrite="true">
+                    <filterchain> <expandproperties/> </filterchain>
+                </copy>
+	</target>
+        <!-- ************************************************** -->
+        <!-- Setting LevelRequest Approval                      -->
+        <!-- ************************************************** -->
+        <target name="postApproveLevelRequest" depends="approveLevelRequestBody">
+            <property name="post.almUrl"     value="${alm.apiUrl}/approvals/${approval.oid}"/>
+            <property name="post.message"    value="Approve LevelRequest=${levelrequest.oid}"/>
+            <!--property name="post.almEntity"  value="${basedir}/temp/approveLevelRequest"/-->
+            <!--property name="post.almBody"    value="${post.almEntity}.xml"/-->
+            <property name="post.almLogfile" value="${post.almEntity}_log.xml"/>
+            <var name="post.status"    unset="true"/>
+            <http url="${post.almUrl}"
+                method="PATCH" expected="200" failonunexpected="false" statusProperty="post.status"
+                printrequest="false" printresponse="false"
+                printrequestheaders="false" printresponseheaders="false"
+                outfile="${post.almLogfile}">
+                <entity file="${post.almBody}"/>
+                <headers>
+                    <header name="Accept" value="application/xml"/>
+                    <header name="Content-Type" value="application/xml"/>
+                    <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+                    <header name="If-Match" value="${almETag.text}"/>
+                </headers>
+            </http>
+            <property name="task.status"   value="${post.status}"/>
+            <property name="task.message"  value="${post.message}"/>
+            <property name="xmlLog.file"   value="${post.almLogfile}"/>
+            <condition property="xmlResponse" value="true">
+                <islessthan arg1="${task.status}" arg2="404"/>
+            </condition>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the XML response file                   -->
+        <!-- ************************************************** -->
+        <target name="approveLevelRequestXmlResult" if="xmlResponse">
+            <var name="almLog.result" unset="true"/>
+            <xmltask source="${xmlLog.file}">
+                <copy path="//error/message/text()"  property="almLog.result"/>
+                <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+                <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+                <copy path="//error/detail/text()"  property="almLog.detail"/>
+                <copy path="//approval/approve-datetime/text()"   property="approve_LR_DATETIME"/>
+                <copy path="//approval/approved-by-user/id/text()"   property="approve_LR_USERID"/>
+                <copy path="//approval/approved-by-user/text/text()"   property="approve_LR_USERNAME"/>
+                <copy path="//approval/id/text()" property="approve_LR_OID_URN"/>
+                <copy path="//approval/level-id/text()"   property="approve_LR_LEVELID"/>
+                <copy path="//approval/levelrequest/id/text()" property="approve_LR_OID"/>
+                <copy path="//approval/projectstream/id/text()"   property="approve_LR_PROJECTSTREAMID"/>
+                <copy path="//approval/projectstream/text/text()"   property="approve_LR_PROJECTSTREAMNAME"/>
+                <copy path="//approval/reason/text()"   property="approve_LR_REASON"/>
+                <copy path="//approval/status/text()"   property="approve_LR_STATUS"/>
+                <copy path="//approval/type/text()"   property="approve_LR_TYPE"/>
+                <copy path="//approval/usergroup/text()"   property="approve_LR_USERGROUP"/>
+            </xmltask>
+            <if> <isset property="approval_LR_OID_URN"/>
+                <then>
+                    <propertyregex property="approve_LR_OID"
+                          input="${approve_LR_OID_URN}" casesensitive="false"
+                          regexp="urn\:alm\:approval\:([0-9]+)\:.*" select="\1"/>
+                </then>
+            </if>
+            <property name="almLog.result" value="Approve LevelRequest Error"/>
+            <property name="almLog.detail" value=""/>
+            <property name="almLog.detail2" value=""/>
+            <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+                <not> <isset property="approve_LR_OID"/> </not>
+            </condition>
+            <condition property="lr_approved" value="true">
+                <isset property="approve_LR_OID"/>
+            </condition>
+            <condition property="lr_notapproved" value="true">
+                <or>
+                    <equals arg1="${task.status}" arg2="400"/>
+                    <equals arg1="${task.status}" arg2="403"/> <!-- User not valid -->
+                </or>
+            </condition>
+            <property name="approve_LR_OID"     value="0"/>
+            <property name="approve_LR_LROID"   value="0"/>
+            <property name="approve_LR_REASON"  value=""/>
+            <property name="task.result" value="${almLog.result}"/>
+            <property name="task.resultMessage" value=" with Reason=${approve_LR_REASON}."/>
+    
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+                <condition>
+                    <and>
+                    <istrue value="${alm.stopOnError}"/>
+                    <not> <equals arg1="${task.status}" arg2="200"/> </not> <!-- LevelRequest is approved -->
+                    </and>
+                </condition>
+            </fail>
+            <!--property name="levelrequest.oid"     value="${approve_LR_OID}"/-->
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the HTML response file                  -->
+        <!-- ************************************************** -->
+        <target name="approveLevelRequestHtmlResult" unless="xmlResponse">
+            <var name="almLog.result" unset="true"/>
+            <property name="almLog.result" value="Client Error"/>
+            <property name="task.resultMessage" value="Message=${almLog.result}"/>
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+                <condition>
+                    <istrue value="${alm.stopOnError}"/>
+                </condition>
+            </fail>
+        </target>
+
+</project>

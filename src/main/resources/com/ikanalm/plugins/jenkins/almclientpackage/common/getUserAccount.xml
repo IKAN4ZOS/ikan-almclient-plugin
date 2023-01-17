@@ -1,0 +1,181 @@
+<project name="getUserAccount" default="getUserAccount" basedir=".">
+    <description>Get a User via Rest Api</description>
+    <!-- ************************************************** -->
+    <!-- Main target                                        -->
+    <!-- ************************************************** -->
+    <target name="getUserAccount" depends="initUserProperties,resetUserVariables,getOneUser,userXmlResult,displayUserAccountUnknown,userHtmlResult">
+        <fail message="ERROR: IKAN ALM Get User cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="userid_ignore"/> </not>
+                    <isset property="userid_notfound"/>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <antcall target="resetUserVariables"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting User access option                       -->
+    <!-- ************************************************** -->
+    <target name="initUserProperties">
+	<property name="alm.stopOnError"      value="true"/>
+        <property name="alm.userid" value="${alm.desktopUser}"/>
+        <if> <equals arg1="${alm.userid}" arg2="None" casesensitive="false"/>
+            <then> 
+            <var name="alm.userid" unset="true"/>
+            <property name="userid_ignore" value="true"/>
+            </then>
+        </if>
+        <if> <equals arg1="${user.oid}" arg2="0"/>
+            <then> <var name="user.oid" unset="true"/> </then>
+        </if>
+        <if> <equals arg1="${user.link}" arg2=""/>
+            <then> <var name="user.link" unset="true"/> </then>
+        </if>
+    </target>
+
+    <target name="resetUserVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting User from Oid                              -->
+    <!-- ************************************************** -->
+    <target name="getUserFromOid" if="user.oid">
+        <property name="get.almUrl"     value="${alm.apiUrl}/users/${user.oid}"/>
+        <property name="get.message"    value="Get User Oid=${user.oid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting User from link                             -->
+    <!-- ************************************************** -->
+    <target name="getUserFromLink" if="user.link">
+        <property name="get.almUrl"     value="${user.link}"/>
+        <property name="get.message"    value="Get User Link=${user.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting User from Userid                           -->
+    <!-- ************************************************** -->
+    <target name="getFromUserid" if="alm.userid">
+        <property name="get.almUrl"     value="${alm.apiUrl}/users?userid=${alm.userid}&amp;page=1&amp;pagesize=10&amp;sortdirection=asc"/>
+        <property name="get.message"    value="Get User Id=${alm.userid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Its                                        -->
+    <!-- ************************************************** -->
+    <target name="getOneUser" if="get.almUrl" depends="getUserFromOid,getUserFromLink,getFromUserid">
+        <property name="get.almEntity"  value="${basedir}/temp/getUser"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="401"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="userXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="//user/link/@href" property="almuser.link"/>
+            <copy path="//user/id/text()" property="almuser_URN"/>
+            <copy path="//user/name/text()" property="almuser_NAME"/>
+            <copy path="//user/archived/text()" property="almuser_ARCHIVED"/>
+            <copy path="//user/email-address/text()" property="almuser_EMAILADDRESS"/>
+            <copy path="//user/description/text()" property="almuser_DESCRIPTION"/>
+            <copy path="//user/locale/text()" property="almuser_LOCALE"/>
+            <copy path="//user/user-id/text()" property="almuser_USERID"/>
+            <copy path="//user/reserved/text()" property="almuser_RESERVED"/>
+            <copy path="//user/location/text()" property="almuser_LOCATION"/>
+            <copy path="//user/tel-number/text()" property="almuser_TELNUMBER"/>
+            <copy path="//user/mobile-number/text()" property="almuser_MOBILENUMBER"/>
+        </xmltask>
+        <if> <isset property="almuser_URN"/>
+            <then>
+                <propertyregex property="almuser_OID"
+                      input="${almuser_URN}" casesensitive="false"
+                      regexp="urn\:alm\:user\:([0-9]+)\:.*" select="\1"/>
+            </then>
+        </if>
+        <property name="almLog.result" value="Not found"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="almuser_OID"/> </not>
+        </condition>
+        <condition property="almuser_found" value="true">
+            <isset property="almuser_OID"/>
+        </condition>
+        <condition property="userid_notfound" value="true">
+            <not> <isset property="almuser_USERID"/> </not>
+        </condition>
+        <property name="almuser_OID"     value="0"/>
+        <property name="almuser.oid"     value="${almuser_OID}"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="User=${almuser_NAME}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="userHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- display User account not in the Database           -->
+    <!-- ************************************************** -->
+    <target name="displayUserAccountUnknown" if="userid_notfound">
+        <echo message="WARNING: Userid=${alm.userid} not found!"/>
+    </target>
+</project>

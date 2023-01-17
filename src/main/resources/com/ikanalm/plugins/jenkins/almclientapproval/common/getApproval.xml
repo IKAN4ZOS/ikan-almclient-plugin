@@ -1,0 +1,211 @@
+<project name="getApproval" default="getApproval" basedir=".">
+    <description>Get a Approval with Oid or link</description>
+    <!-- ************************************************** -->
+    <!-- Main target                                        -->
+    <!-- ************************************************** -->
+    <target name="getApproval" depends="initApprovalProperties,resetApprovalVariables,getOneApproval,approvalXmlResult,approvalHtmlResult">
+        <fail message="ERROR: IKAN ALM Get Approval cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="approval_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <antcall target="resetApprovalVariables"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting Approval access option               -->
+    <!-- ************************************************** -->
+    <target name="initApprovalProperties">
+	<property name="alm.stopOnError"      value="true"/>
+        <condition property="approval.oid" value="${approvalOid}">
+            <and>
+                <isset property="approvalOid"/>
+                <not> <equals arg1="${approvalOid}" arg2=""/> </not>
+                <not> <equals arg1="${approvalOid}" arg2="0"/> </not>
+            </and>
+        </condition>
+        <if> <equals arg1="${approval.link}" arg2=""/>
+            <then> <var name="approval.link" unset="true"/> </then>
+        </if>
+        <var name="readETag"  unset="true"/>
+        <condition property="readETag" value="true">
+            <or>
+                <isset property="approval.oid"/>
+                <isset property="approval.link"/>
+            </or>
+        </condition>
+    </target>
+    <target name="resetApprovalVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Getting a Approval from Oid                    -->
+    <!-- ************************************************** -->
+    <target name="getApprovalFromOid" if="approval.oid">
+        <property name="get.almUrl"     value="${alm.apiUrl}/approvals/${approval.oid}"/>
+        <property name="get.message"    value="Get Approval Oid=${approval.oid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting a Approval from Oid                    -->
+    <!-- ************************************************** -->
+    <target name="getApprovalFromLink" if="approval.link">
+        <property name="get.almUrl"     value="${approval.link}"/>
+        <property name="get.message"    value="Get Approval Link=${approval.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Approval                               -->
+    <!-- ************************************************** -->
+    <target name="getOneApproval" if="get.almUrl" depends="getApprovalFromOid,getApprovalFromLink">
+        <property name="get.almEntity"  value="${basedir}/temp/getApproval"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <property name="get.headers"    value="${get.almEntity}_headers.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}" outheadersfile="${get.headers}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="400"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML/HTML response file              -->
+    <!-- ************************************************** -->
+    <target name="approvalXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="//approvals/@count"  property="approvals_count"/>
+            <copy path="//approval/approve-datetime/text()"   property="approval_DATETIME"/>
+            <copy path="//approval/approved-by-user/id/text()"   property="approval_CREATEDBYUSER"/>
+            <copy path="//approval/approved-by-user/link/@href"   property="approval_CREATEDBYUSER_LINK"/>
+            <copy path="//approval/id/text()" property="approval_OID_URN"/>
+            <copy path="//approval/link/@href" property="approval_LINK"/>
+            <copy path="//approval/level-id/text()"   property="approval_LEVELID"/>
+            <copy path="//approval/levelrequest/id/text()"   property="approval_LEVELREQUEST"/>
+            <copy path="//approval/levelrequest/link/@href"   property="approval_LEVELREQUEST_LINK"/>
+            <copy path="//approval/projectstream/id/text()"   property="approval_PROJECTSTREAM"/>
+            <copy path="//approval/projectstream/link/@href"   property="approval_PROJECTSTREAM_LINK"/>
+            <copy path="//approval/reason/text()"   property="approval_REASON"/>
+            <copy path="//approval/sequence-number/text()"   property="approval_SEQUENCENUMBER"/>
+            <copy path="//approval/status/id/text()"   property="approval_STATUS"/>
+            <copy path="//approval/status/text/text()"   property="approval_STATUSNAME"/>
+            <copy path="//approval/type/id/text()" property="approval_TYPEID"/>
+            <copy path="//approval/type/text/text()" property="approval_TYPENAME"/>
+            <copy path="//approval/usergroup/id/text()"   property="approval_USERGROUP"/>
+            <copy path="//approval/usergroup/link/@href"   property="approval_USERGROUP_LINK"/>
+        </xmltask>
+        <if> <equals arg1="${task.status}" arg2="200"/>
+            <then> 
+                <property name="approvals_count"  value="1"/>
+                <antfetch target="approvalETag" return="almETag.text"/>
+            </then>
+        </if>
+        <if> <isset property="approval_OID_URN"/>
+            <then>
+                <propertyregex property="approval_OID"
+                      input="${approval_OID_URN}" casesensitive="false"
+                      regexp="urn\:alm\:approval\:([0-9]+)\:.*" select="\1"/>
+            </then>
+        </if>
+        <property name="almLog.result" value="Not found"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="approval_OID"/> </not>
+        </condition>
+        <condition property="approval_found" value="true">
+            <isset property="approval_OID"/>
+        </condition>
+        <condition property="existApproval" value="true">
+            <isset property="approval_OID"/>
+        </condition>
+        <property name="approval_OID"     value="0"/>
+        <property name="approval.oid"     value="${approval_OID}"/>
+        <property name="approval_STATUS"     value="0"/>
+        <property name="approval_STATUSNAME"    value="Waiting unknown"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Status=${approval_STATUSNAME}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+
+        <property name="approval_DATETIME"      value=""/>
+        <property name="approval_LEVELREQUEST"  value="0"/>
+        <property name="approval_PROJECTSTREAM" value=""/>
+        <property name="approval_REASON"        value=""/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="approvalHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Searching at the Etag response header parameter    -->
+    <!-- ************************************************** -->
+    <target name="approvalETag" if="readETag">
+        <var name="alm_headers"  unset="true"/>
+        <loadfile property="alm_headers" srcfile="${get.headers}"/>
+        <var name="almETag.text" unset="true"/>
+        <propertyregex property="almETag.text"
+              input="${alm_headers}" casesensitive="false"
+              regexp="ETag\:\ (\&quot;[\w]+\&quot;)" select="\1"/>
+        <fail message="ERROR: ETag response header parameter is not found!">
+            <condition>
+                <and>
+                    <not> <isset property="almETag.text"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+
+</project>

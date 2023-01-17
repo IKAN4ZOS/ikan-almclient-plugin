@@ -1,0 +1,248 @@
+<project name="updateLevelRequest" default="updateLevelRequest" basedir=".">
+    <description>Update a LevelRequest with LevelRequest Oid</description>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+
+	<target name="updateLevelRequest" depends="resetUpdateLevelRequestVariables,patchUpdateLevelRequest,updateLevelRequestXmlResult,updateLevelRequestHtmlResult">
+        <fail message="ERROR: IKAN ALM Update Level Request cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="lr_updated"/> </not>
+                    <not> <isset property="lr_notupdated"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <antcall target="resetUpdateLevelRequestVariables"/>
+	</target>
+
+        <target name="resetUpdateLevelRequestVariables">
+            <var name="patch.almBody"   unset="true"/>
+            <var name="patch.almEntity" unset="true"/>
+            <var name="patch.almLogfile" unset="true"/>
+            <var name="patch.almUrl"    unset="true"/>
+            <var name="patch.message"   unset="true"/>
+            <var name="task.status"    unset="true"/>
+            <var name="task.message"   unset="true"/>
+            <var name="task.result"    unset="true"/>
+            <var name="task.resultMessage"   unset="true"/>
+            <var name="xmlLog.file"    unset="true"/>
+            <var name="xmlResult.log"  unset="true"/>
+            <var name="xmlResponse"    unset="true"/>
+        </target>
+
+	<!-- Update an IKAN ALM LevelRequest using the RESTful API -->
+        <target name="updateLevelRequestBody">
+                <condition property="ulr.description.line" value=""
+                    else="&lt;description&gt;${ulr.description}&lt;/description&gt;">
+                    <equals arg1="${ulr.description}" arg2=""/>
+                </condition>
+	        <!--property name="ulr.status"        value="${alm.status}"/-->
+                <if> <not> <equals arg1="${ulr.status}" arg2=""/> </not>
+                    <then> <antcall target="controlRequestedStatus"/> </then>
+                </if>
+                <condition property="ulr.status.line" value=""
+                    else="&lt;status&gt;${ulr.status}&lt;/status&gt;">
+                    <or>
+                    <equals arg1="${ulr.status}" arg2=""/>
+                    <equals arg1="${ulr.status}" arg2="None"/>
+                    </or>
+                </condition>
+
+        	<property name="ulr.requested-datetime"     value=""/>
+                <if> <not> <equals arg1="${ulr.requested-datetime}" arg2=""/> </not>
+                    <then> <antcall target="controlRequestedDatetime"/> </then>
+                </if>
+                <condition property="ulr.requested-datetime.line" value=""
+                    else="&lt;requested-datetime&gt;${ulr.requested-datetime}&lt;/requested-datetime&gt;">
+                    <equals arg1="${ulr.requested-datetime}" arg2=""/>
+                </condition>
+
+                <!-- Generate Patch body file -->
+                <mkdir dir="${basedir}/temp"/>
+	        <property name="levelRequest.oid"   value="${alm.levelRequest.oid}"/>
+                <property name="patch.almEntity"  value="${basedir}/temp/updateLevelRequest-${levelRequest.oid}"/>
+                <property name="patch.almBody"    value="${patch.almEntity}.xml"/>
+
+                <copy file="${dir.almModels}/alm_updateLevelRequest_xml.model"
+                    tofile="${patch.almBody}" overwrite="true">
+                    <filterchain> <expandproperties/> </filterchain>
+                </copy>
+	</target>
+        <!-- ************************************************** -->
+        <!-- Patching LevelRequest                              -->
+        <!-- ************************************************** -->
+        <target name="patchUpdateLevelRequest" depends="updateLevelRequestBody">
+            <property name="patch.almUrl"     value="${alm.apiUrl}/levelrequests/${levelRequest.oid}"/>
+            <property name="patch.message"    value="Update LevelRequest"/>
+            <property name="patch.almLogfile" value="${patch.almEntity}_log.xml"/>
+            <var name="patch.status"    unset="true"/>
+            <http url="${patch.almUrl}"
+                method="PATCH" expected="200" failonunexpected="false" statusProperty="patch.status"
+                printrequest="false" printresponse="false"
+                printrequestheaders="false" printresponseheaders="false"
+                outfile="${patch.almLogfile}">
+                <entity file="${patch.almBody}"/>
+                <headers>
+                    <header name="Accept" value="application/xml"/>
+                    <header name="Content-Type" value="application/xml"/>
+                    <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+                    <header name="If-Match" value="${almETag-LevelRequest.text}"/>
+                </headers>
+            </http>
+            <property name="task.status"   value="${patch.status}"/>
+            <property name="task.message"  value="${patch.message}"/>
+            <property name="xmlLog.file"   value="${patch.almLogfile}"/>
+            <condition property="xmlResponse" value="true">
+                <islessthan arg1="${task.status}" arg2="404"/>
+            </condition>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the XML response file                   -->
+        <!-- ************************************************** -->
+        <target name="updateLevelRequestXmlResult" if="xmlResponse">
+            <var name="almLog.result" unset="true"/>
+            <var name="LR_OID_URN" unset="true"/>
+            <var name="LR_ACTION" unset="true"/>
+            <var name="LR_DESCRIPTION" unset="true"/>
+            <var name="LR_STATUS" unset="true"/>
+            <var name="LR_STATUSNAME" unset="true"/>
+            <var name="LR_REQUESTEDDATETIME" unset="true"/>
+<!--
+            <var name="LR_PROJECTSTREAM" unset="true"/>
+            <var name="LR_LEVEL" unset="true"/>
+            <var name="LR_BUILD_NUMBER" unset="true"/>
+-->
+            <xmltask source="${xmlLog.file}">
+                <copy path="//error/message/text()"  property="almLog.result"/>
+                <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+                <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+                <copy path="//error/detail/text()"  property="almLog.detail"/>
+                <copy path="//levelrequest/id/text()" property="LR_OID_URN"/>
+                <copy path="//levelrequest/action-type/id/text()" property="LR_ACTION"/>
+                <copy path="//levelrequest/action-type/text/text()" property="LR_ACTIONTYPE"/>
+                <copy path="//levelrequest/description/text()" property="LR_DESCRIPTION"/>
+                <copy path="//levelrequest/requested-datetime/text()"   property="LR_REQUESTEDDATETIME"/>
+                <copy path="//levelrequest/status/id/text()"   property="LR_STATUS"/>
+                <copy path="//levelrequest/status/text/text()"   property="LR_STATUSNAME"/>
+<!--
+                <copy path="//levelrequest/vcr-tag/text()"   property="LR_VCRTAG"/>
+                <copy path="//levelrequest/projectstream/id/text()"   property="LR_PROJECTSTREAM"/>
+                <copy path="//levelrequest/level-id/text()"   property="LR_LEVEL"/>
+                <copy path="//levelrequest/build-number/text()"   property="LR_BUILD_NUMBER"/>
+-->
+            </xmltask>
+            <if> <isset property="LR_OID_URN"/>
+                <then>
+                    <propertyregex property="LR_OID"
+                          input="${LR_OID_URN}" casesensitive="false"
+                          regexp="urn\:alm\:levelrequest\:([0-9]+)\:.*" select="\1"/>
+                </then>
+            </if>
+            <property name="almLog.result" value="Client Error"/>
+            <property name="almLog.detail" value=""/>
+            <property name="almLog.detail2" value=""/>
+            <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+                <not> <isset property="LR_OID"/> </not>
+            </condition>
+            <condition property="lr_updated" value="true">
+                <isset property="LR_OID"/>
+            </condition>
+            <condition property="lr_notupdated" value="true">
+                <isgreaterthan arg1="${task.status}" arg2="201"/>
+            </condition>
+            <property name="LR_OID"     value="0"/>
+            <property name="LR_STATUS"     value="0"/>
+            <property name="task.result" value="${almLog.result}"/>
+            <property name="task.resultMessage" value="Level Request Oid=${LR_OID} with Status=${LR_STATUS}"/>
+    
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+                <condition>
+                    <and>
+                    <istrue value="${alm.stopOnError}"/>
+                    <not> <equals arg1="${task.status}" arg2="200"/> </not> <!-- LevelRequest is updated -->
+                    <not> <equals arg1="${task.status}" arg2="201"/> </not> <!-- LevelRequest cannot updated -->
+                    </and>
+                </condition>
+            </fail>
+            <property name="levelrequest.oid"     value="${LR_OID}"/>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the HTML response file                  -->
+        <!-- ************************************************** -->
+        <target name="updateLevelRequestHtmlResult" unless="xmlResponse">
+            <var name="almLog.result" unset="true"/>
+            <property name="almLog.result" value="Client Error"/>
+            <property name="task.resultMessage" value="Message=${almLog.result}"/>
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+                <condition>
+                    <istrue value="${alm.stopOnError}"/>
+                </condition>
+            </fail>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Verifying the ulr.requested-datetime value         -->
+        <!-- ************************************************** -->
+        <target name="controlRequestedDatetime">
+            <propertyregex property="thedate"
+                  input="${ulr.requested-datetime}" casesensitive="false"
+                  regexp="(.*)T.*" select="\1"/>
+            <propertyregex property="validdate"
+                  input="${thedate}" casesensitive="false"
+                  regexp="^((?:19|20)[0-9][0-9])-(0?[1-9]|1[012])-(0?[1-9]|[12][0-9]|3[01])$" replace="true"/>
+            <propertyregex property="thetime"
+                  input="${ulr.requested-datetime}" casesensitive="false"
+                  regexp=".*T(.*)" select="\1"/>
+            <propertyregex property="validtime"
+                  input="${thetime}" casesensitive="false"
+                  regexp="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$" replace="true"/>
+            <fail message="ERROR: IKAN ALM Update Level Request alm.requested-datetime is invalid! (format yyyy-MM-ddTHH:mm:ss)">
+                <condition>
+                    <or>
+                        <not> <isset property="validdate"/> </not>
+                        <not> <isset property="validtime"/> </not>
+                    </or>
+                </condition>
+            </fail>
+            <propertyregex property="thedatetime"
+                  input="${ulr.requested-datetime}" casesensitive="false"
+                  regexp="^([0-9]+)-([0-9]+)-([0-9]+)T([0-9]+)\:([0-9]+)\:.*$" select="\1\2\3\4\5"/>
+            <tstamp>
+                <format property="next.startDate" pattern="yyyy-MM-dd HH:mm"
+                        offset="1" unit="minute"/>
+            </tstamp>
+            <propertyregex property="nextdatetime"
+                  input="${next.startDate}" casesensitive="false"
+                  regexp="^([0-9]+)-([0-9]+)-([0-9]+)\s([0-9]+)\:([0-9]+)$" select="\1\2\3\4\5"/>
+<!--echo message="thedatetime=${thedatetime} ${next.startDate} nextdatetime=${nextdatetime}"/-->
+            <fail message="ERROR: IKAN ALM Update Level Request alm.requested-datetime is before now!">
+                <condition>
+                        <islessthan arg1="${thedatetime}" arg2="${nextdatetime}"/>
+                </condition>
+            </fail>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Verifying at the ulr.status value                  -->
+        <!-- ************************************************** -->
+        <target name="controlRequestedStatus">
+            <fail message="ERROR: IKAN ALM Update Level Request alm.status is not supported! Use 8=Cancel or 10=Abort.">
+                <condition>
+                <and>
+                    <not> <equals arg1="${ulr.status}" arg2="None"/> </not>
+                    <not> <equals arg1="${ulr.status}" arg2="8"/> </not>
+                    <not> <equals arg1="${ulr.status}" arg2="10"/> </not>
+                </and>
+                </condition>
+            </fail>
+        </target>
+
+</project>

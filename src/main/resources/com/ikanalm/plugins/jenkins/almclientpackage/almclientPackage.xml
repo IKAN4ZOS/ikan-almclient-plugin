@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="almclientPackage" basedir="." default="almclientPackage">
+	<description>
+	Script for creating or updating a Package using the createUpdatePackage.xml script mainly.
+	if alm.package.oid is provided then action=Update
+	else action=Create using Project, Stream, Package name values for creating
+	filerevisions or dir.package parameters are used for linking files to the package.
+
+        Parameters provided by builder:
+			- builderName (e.g.: Client/Jenkins/Cloudbees/Hudson/..)
+
+		for launching the ALM Package : properties are taken from the client parameters.
+
+		Login ALM User
+			- alm.baseUrl (e.g.: http://IKAN000:8080/alm)
+			- alm.rest.userid (e.g.: global)
+			- alm.rest.password (e.g.: global)
+		Main parameters
+			- alm.package.archived (e.g.: false, true)
+			- alm.package.description (e.g.: My package)
+			- alm.package.name (e.g.: packageName)
+			- alm.package.oid (e.g.: 0)
+			- alm.package.status (e.g.: 0=active; 1=Frozen; 2=Archived)
+			- alm.package.targetdate (e.g.: Date format is yyyy-mm-dd)
+			- alm.package.userid (e.g.: alm.rest.userid)
+			- alm.project.name (e.g.: MYSAMPLE)
+			- alm.projectStream.buildPrefix (e.g.: 1-0)
+			- alm.projectStream.buildSuffix (optional)
+			- filerevisions (e.g.: Xml filerevisions file if no dir.package location)
+			- dir.package (e.g.: files location if no filerevisions file)
+                Always
+			- alm.stopOnError (e.g.: true, false)
+                Optional parameters for listing linked filerevisions
+			- allFilerevisions (e.g.: Working the package with all Filerevisions (false=delete old Filerevisions if not found, true=ignore) )
+			- addPropertyFileLink (e.g.:false, true. Add file's property file links to the package filerevisions if exist)
+			- listPackageFilesAfter (e.g.: true, false)
+			- listPackageFilesBefore (e.g.: false, true)
+	</description>
+
+        <property name="dir.commonScripts" value="${basedir}/common"/>
+        <import file="${dir.commonScripts}/initConfig.xml"/>
+
+        <!-- Creating/Updating Package                               -->
+        <import file="${dir.commonScripts}/createUpdatePackage.xml"/>
+        <!-- Getting Package Info                                    -->
+        <import file="${dir.commonScripts}/getPackage.xml"/>
+        <!-- Getting User Info                                       -->
+        <import file="${dir.commonScripts}/getUserAccount.xml"/>
+
+        <import file="${dir.commonScripts}/httpConfigControl.xml"/>
+
+        <import file="${dir.commonScripts}/loginAlmSession.xml"/>
+
+        <taskdef resource="net/sf/antcontrib/antlib.xml" classpathref="antext.classpath"/>
+
+        <property environment="system"/>
+
+	<target name="initALM_Package">
+		<!-- Properties for creating the Package in IKAN ALM -->
+<!-- Optional for creation
+	        <property name="alm.package.oid"  value="0"/>
+-->
+<!-- Optional if oid is provided for update else mandatory for creating
+	        <property name="alm.package.name" value=""/>
+	        <property name="alm.package.description" value=""/>
+                <property name="alm.project.name" value=""/>
+	        <property name="alm.projectStream.buildPrefix" value=""/>
+	        <property name="alm.projectStream.buildSuffix" value=""/>
+                <property name="alm.package.archived" value="false"/>
+-->
+                <!-- Location of package files to link with (if not filerevisions file) -->
+                <property name="dir.package" value="${basedir}/temp/package/0"/>
+                <!-- filerevisions file (as commandline filerevisions.xml file) to link with (if not dir.package location) -->
+  	        <property name="filerevisions"        value="${basedir}/filerevisions_0.xml"/>
+                <!-- List package's linked files before/after update -->
+		<property name="listPackageFilesBefore" value="false"/>
+		<property name="listPackageFilesAfter"  value="true"/>
+                <!-- Add property file link for each file found in dir.package location -->
+                <property name="addPropertyFileLink" value="false"/>
+                <!-- Maintain file link for file not found in dir.package location -->
+                <property name="allFilerevisions"    value="false"/>
+
+                <condition property="package.oid" value="${alm.package.oid}">
+                    <and>
+                        <isset property="alm.package.oid"/>
+                        <not> <equals arg1="${alm.package.oid}" arg2=""/> </not>
+                        <not> <equals arg1="${alm.package.oid}" arg2="0"/> </not>
+                    </and>
+                </condition>
+                <if> <isset property="package.oid"/>
+                    <then>
+                        <echo message="Update Package=${alm.package.oid} by User=${alm.rest.userid}"/>
+                        <property name="filerevisions.csvfile"  value="${local.list}/package_${alm.package.oid}_filerevisions.csv"/>
+                    </then>
+                    <else>
+	                <property name="alm.package.name" value=""/>
+	                <property name="alm.package.description" value=""/>
+	                <property name="alm.project.name" value=""/>
+	                <property name="alm.projectStream.buildPrefix" value=""/>
+	                <property name="alm.projectStream.buildSuffix" value=""/>
+                        <property name="alm.package.status" value="0"/>
+                        <property name="alm.package.userid" value="${alm.rest.userid}"/>
+                        <property name="alm.package.targetdate" value=""/>
+                        <property name="alm.package.archived" value="false"/>
+                        <condition property="alm.projectStream" value="${alm.projectStream.buildPrefix}"
+                                else="${alm.projectStream.buildPrefix}-${alm.projectStream.buildSuffix}">
+                           <equals arg1="${alm.projectStream.buildSuffix}" arg2=""/>
+        		</condition>
+                        <echo message="Create Package=${alm.package.name} of ${alm.project.name} ${alm.projectStream} by User=${alm.rest.userid}"/>
+                        <property name="filerevisions.csvfile"  value="${local.list}/package_${alm.package.name}_filerevisions.csv"/>
+                    </else>
+                </if>
+		<basename property="csvfile.name" file="${filerevisions.csvfile}" suffix="csv"/>
+		<dirname  property="csvfile.dir"  file="${filerevisions.csvfile}"/>
+		<property name="dir.almModels" value="${basedir}/almModels"/>
+	</target>
+
+        <!-- *********************************************************** -->
+        <!-- Main target : almclientPackage                              -->
+        <!-- *********************************************************** -->
+	<target name="almclientPackage" if="${alm.active}"
+                depends="initConfig,initALM_Package,httpConfigControl">
+
+                <antfetch target="loginAlmSession" return="almCookie.key,almCookie.text"/>
+	        <var name="listPackageFiles" value="${listPackageFilesBefore}"/>
+                <!-- Create ALM Package and add files -->
+                <antfetch target="createUpdatePackage" return="package_created,package_updated,package.oid,package.name"/>
+                <if> <not> <available file="${listPackageFilesBefore}" type="file"/> </not>
+                    <then>
+                    <property name="filerevision.names" value="FILEPATH,FILENAME,REVISION"/>
+                    <echo message="${filerevision.colnames}${line.separator}" file="${filerevisions.csvfile}"/>
+                    </then>
+                </if>
+                <if> <istrue value="${listPackageFilesBefore}"/>
+                    <then>
+                    <move file="${filerevisions.csvfile}"  tofile="${csvfile.dir}/${csvfile.name}_before.csv"/>
+                    </then>
+                </if>
+
+	        <property name="package_created" value="false"/>
+	        <property name="package_updated" value="false"/>
+		<echo message="Package '${package.name}' with number=${package.oid} created=${package_created} updated=${package_updated}"/>
+
+	        <var name="listPackageFiles" value="${listPackageFilesAfter}"/>
+                <if> <istrue value="${listPackageFilesAfter}"/>
+                    <then>
+                    <antcall target="getPackageFilerevisions"/>
+                    <move file="${filerevisions.csvfile}"  tofile="${csvfile.dir}/${csvfile.name}_after.csv"/>
+                    </then>
+                </if>
+
+                <antcall target="logoutAlmSession"/>
+	</target>
+
+</project>

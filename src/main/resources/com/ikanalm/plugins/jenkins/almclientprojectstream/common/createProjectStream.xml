@@ -1,0 +1,280 @@
+<project name="createProjectStream" default="createProjectStream" basedir=".">
+    <description>
+        Create a Project Stream
+        The script uses the similar IKAN ALM parameters (projectStream.xx)
+    </description>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+
+	<target name="createProjectStream"
+                depends="initCreateProjectStream,createOneProjectStream,createProjectStreamXmlResult,createProjectStreamHtmlResult">
+            <fail message="ERROR: IKAN ALM Create ProjectStream cannot be done correctly.">
+                <condition>
+                    <and>
+                        <not> <isset property="projectStream_created"/> </not>
+                        <istrue value="${alm.stopOnError}"/>
+                    </and>
+                </condition>
+            </fail>
+            <!--antcall target="resetCreateProjectStreamVariables"/-->
+        </target>
+        <!-- ************************************************** -->
+        <!-- Adding ProjectStream options                       -->
+        <!-- ************************************************** -->
+        <target name="initCreateProjectStream">
+            <!-- Default properties -->
+            <property name="dir.almModels"  value="${basedir}/almModels"/>
+            <property name="alm.projectStream.oid"  value="0"/>
+            <!--property name="alm.projectStream.link" value=""/-->
+
+    	    <property name="alm.stopOnError"      value="true"/>
+
+            <condition property="projectStream.oid" value="${alm.projectStream.oid}">
+                <and>
+                    <not> <equals arg1="${alm.projectStream.oid}" arg2=""/> </not>
+                    <not> <equals arg1="${alm.projectStream.oid}" arg2="0"/> </not>
+                </and>
+            </condition>
+
+            <condition property="projectStream.buildPrefix" value="${alm.projectStream.buildPrefix}">
+                <and>
+                    <isset property="alm.projectStream.buildPrefix"/>
+                    <not> <equals arg1="${alm.projectStream.buildPrefix}" arg2=""/> </not>
+                </and>
+            </condition>
+            <condition property="projectStream.buildSuffix" value="${alm.projectStream.buildSuffix}">
+                <and>
+                    <isset property="alm.projectStream.buildSuffix"/>
+                    <not> <equals arg1="${alm.projectStream.buildSuffix}" arg2=""/> </not>
+                </and>
+            </condition>
+            <if> <equals arg1="${projectStream.oid}" arg2=""/>
+                <then> <var name="projectStream.oid" unset="true"/> </then>
+            </if>
+            <if> <equals arg1="${projectStream.oid}" arg2="0"/>
+                <then> <var name="projectStream.oid" unset="true"/> </then>
+            </if>
+<!-- Not supported here
+            <if> <equals arg1="${projectStream.link}" arg2=""/>
+                <then> <var name="projectStream.link" unset="true"/> </then>
+            </if>
+-->
+	</target>
+
+        <target name="resetCreateProjectStreamVariables">
+            <var name="post.almBody"   unset="true"/>
+            <var name="post.almEntity" unset="true"/>
+            <var name="post.almLogfile" unset="true"/>
+            <var name="post.almUrl"    unset="true"/>
+            <var name="post.message"   unset="true"/>
+            <var name="task.status"    unset="true"/>
+            <var name="task.message"   unset="true"/>
+            <var name="task.result"    unset="true"/>
+            <var name="task.resultMessage"   unset="true"/>
+            <var name="xmlLog.file"    unset="true"/>
+            <var name="xmlResult.log"  unset="true"/>
+            <var name="xmlResponse"    unset="true"/>
+        </target>
+
+        <target name="createProjectStreamBodyData" unless="projectStream.oid">
+            <property name="stream.projectOid"  value="${project.oid}"/>
+            <property name="stream.projectType"  value="${project.type}"/>
+            <property name="stream.lifecycleOid"  value="${lifecycle.oid}"/>
+            <property name="stream.buildPrefix" value="${branch.buildPrefix}"/>
+            <property name="stream.buildSuffix" value="${branch.buildSuffix}"/>
+            <!-- buildType: 0=Full Build; 1=Partial Build; 2=Production-based Partial Build; 3=Tag-based Partial Build -->
+            <property name="stream.buildType.index" value="0"/>
+            <property name="stream.description" value="${project.name} ${stream.buildPrefix} - ${stream.buildSuffix}"/>
+            <property name="stream.vcrBranchId" value="${branch.vcrBranchId}"/>
+            <!-- default parameter values -->
+            <property name="stream.head"  value="0"/>
+            <property name="stream.highestBuildNumber"  value="0"/>
+            <property name="stream.acceptForcedBuild" value="true"/>
+            <property name="stream.archived" value="false"/>
+            <property name="stream.locked" value="false"/>
+            <property name="stream.tagBased" value="false"/>
+            <condition property="stream.tagTemplate"
+                            value="${streamType}_${prefix}_${suffix}_${packageName}_b${buildNumber}"
+                             else="${streamType}_${prefix}_${suffix}_b${buildNumber}">
+                    <equals arg1="${stream.projectType}" arg2="1"/>
+            </condition>
+            <!-- status: 0=Under construction; 1=Planning; 2=Development; 3=Testing; 4=Stable; 5=General available; 6=Frozen; 7=Closed -->
+            <property name="stream.status.index" value="0"/>
+
+            <property name="cru.projectStream.projectOid" value="${stream.projectOid}"/>
+            <property name="cru.projectStream.lifecycleOid" value="${stream.lifecycleOid}"/>
+            <property name="cru.projectStream.buildPrefix" value="${stream.buildPrefix}"/>
+            <property name="cru.projectStream.buildSuffix" value="${stream.buildSuffix}"/>
+            <property name="cru.projectStream.buildType.index"  value="${stream.buildType.index}"/>
+            <property name="cru.projectStream.description" value="${stream.description}"/>
+            <property name="cru.projectStream.vcrBranchId" value="${stream.vcrBranchId}"/>
+            <property name="cru.projectStream.head"  value="${stream.head}"/>
+            <property name="cru.projectStream.highestBuildNumber"  value="${stream.highestBuildNumber}"/>
+            <property name="cru.projectStream.acceptForcedBuild" value="${stream.acceptForcedBuild}"/>
+            <property name="cru.projectStream.archived" value="${stream.archived}"/>
+            <property name="cru.projectStream.locked" value="${stream.locked}"/>
+            <property name="cru.projectStream.tagBased" value="${stream.tagBased}"/>
+            <property name="cru.projectStream.tagTemplate" value="${stream.tagTemplate}"/>
+            <property name="cru.projectStream.status.index" value="${stream.status.index}"/>
+        </target>
+
+        <!-- ************************************************** -->
+        <!-- Posting a ProjectStream                            -->
+        <!-- ************************************************** -->
+        <target name="createOneProjectStream" unless="projectStream.oid" depends="createProjectStreamBodyData,resetCreateProjectStreamVariables">
+  	    <!-- Create an IKAN ALM ProjectStream using the RESTful API -->
+            <!-- Generate Post body without file -->
+            <property name="post.almEntity"  value="${basedir}/temp/createProjectStream-${cru.projectStream.buildPrefix}-${cru.projectStream.buildSuffix}"/>
+            <property name="post.almBody"    value="${post.almEntity}.xml"/>
+            <copy file="${dir.almModels}/alm_projectStream_xml.model"
+                tofile="${post.almBody}" overwrite="true">
+                <filterchain> <expandproperties/> </filterchain>
+            </copy>
+            <property name="post.almUrl"     value="${alm.apiUrl}/projectstreams"/>
+            <property name="post.message"    value="Create projectStream"/>
+            <property name="post.almLogfile" value="${post.almEntity}_log.xml"/>
+            <var name="post.status"    unset="true"/>
+            <http url="${post.almUrl}"
+                method="POST" expected="201" failonunexpected="false" statusProperty="post.status"
+                printrequest="false" printresponse="false"
+                printrequestheaders="false" printresponseheaders="false"
+                outfile="${post.almLogfile}">
+                <entity file="${post.almBody}"/>
+                <headers>
+                    <header name="Accept" value="application/xml"/>
+                    <header name="Content-Type" value="application/xml"/>
+                    <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+                </headers>
+            </http>
+            <property name="task.status"   value="${post.status}"/>
+            <property name="task.message"  value="${post.message}"/>
+            <property name="xmlLog.file"   value="${post.almLogfile}"/>
+            <condition property="xmlResponse" value="true">
+                <islessthan arg1="${task.status}" arg2="404"/>
+            </condition>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Cleaning the response properties                   -->
+        <!-- ************************************************** -->
+        <target name="resetProjectStreamCreateProperties">
+            <var name="projectStream_URN" unset="true"/>
+            <var name="projectStream_OID" unset="true"/>
+            <var name="projectStream_BUILDPREFIX" unset="true"/>
+            <var name="projectStream_BUILDSUFFIX" unset="true"/>
+            <var name="projectStream_FORCED" unset="true"/>
+            <var name="projectStream_ARCHIVED" unset="true"/>
+            <var name="projectStream_BUILDTYPE" unset="true"/>
+            <var name="projectStream_BUILDTYPE_TEXT" unset="true"/>
+            <var name="projectStream_DESCRIPTION" unset="true"/>
+            <var name="projectStream_HIGHESTBUILDNUMBER" unset="true"/>
+            <var name="projectStream_ISHEAD" unset="true"/>
+            <var name="projectStream_TAGBASED" unset="true"/>
+            <var name="projectStream_LIFECYCLE" unset="true"/>
+            <var name="projectStream_LIFECYCLE_LINK" unset="true"/>
+            <var name="projectStream_LOCKED" unset="true"/>
+            <var name="projectStream_PROJECT" unset="true"/>
+            <var name="projectStream_PROJECT_LINK" unset="true"/>
+            <var name="projectStream_STATUS" unset="true"/>
+            <var name="projectStream_STATUS_TEXT" unset="true"/>
+            <var name="projectStream_TAGTEMPLATE" unset="true"/>
+            <var name="projectStream_VCRBRANCHID" unset="true"/>
+            <var name="projectStream" unset="true"/>
+            <var name="projectStream_created" unset="true"/>
+            <var name="projectstreams_count" unset="true"/>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the XML response file                   -->
+        <!-- ************************************************** -->
+        <target name="createProjectStreamXmlResult" if="xmlResponse" depends="resetProjectStreamCreateProperties">
+            <var name="almLog.result" unset="true"/>
+            <xmltask source="${xmlLog.file}">
+                <copy path="//error/message/text()" property="almLog.result"/>
+                <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+                <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+                <copy path="//error/detail/text()"  property="almLog.detail"/>
+                <copy path="//projectstream/id/text()"  property="projectStream_URN"/>
+                <copy path="//projectstream/accept-forced-build/text()" property="projectStream_FORCED"/>
+                <copy path="//projectstream/archived/text()" property="projectStream_ARCHIVED"/>
+                <copy path="//projectstream/buildprefix/text()"  property="projectStream_BUILDPREFIX"/>
+                <copy path="//projectstream/buildsuffix/text()"  property="projectStream_BUILDSUFFIX"/>
+                <copy path="//projectstream/buildtype/id/text()"  property="projectStream_BUILDTYPE"/>
+                <copy path="//projectstream/buildtype/text/text()"  property="projectStream_BUILDTYPE_TEXT"/>
+                <copy path="//projectstream/description/text()" property="projectStream_DESCRIPTION"/>
+                <copy path="//projectstream/highest-buildnumber/text()" property="projectStream_HIGHESTBUILDNUMBER"/>
+                <copy path="//projectstream/is-head/text()" property="projectStream_ISHEAD"/>
+                <copy path="//projectstream/is-tagbased/text()" property="projectStream_TAGBASED"/>
+                <copy path="//projectstream/lifecycle/id/text()"  property="projectStream_LIFECYCLE"/>
+                <copy path="//projectstream/lifecycle/link/@href"  property="projectStream_LIFECYCLE_LINK"/>
+                <copy path="//projectstream/locked/text()" property="projectStream_LOCKED"/>
+                <copy path="//projectstream/project/id/text()"  property="projectStream_PROJECT"/>
+                <copy path="//projectstream/project/link/@href"  property="projectStream_PROJECT_LINK"/>
+                <copy path="//projectstream/status/id/text()" property="projectStream_STATUS"/>
+                <copy path="//projectstream/status/text/text()" property="projectStream_STATUS_TEXT"/>
+                <copy path="//projectstream/tag-template/text()" property="projectStream_TAGTEMPLATE"/>
+                <copy path="//projectstream/vcr-branch-id/text()" property="projectStream_VCRBRANCHID"/>
+            </xmltask>
+            <if> <isset property="projectStream_URN"/>
+                <then>
+                    <propertyregex property="projectStream_OID"
+                          input="${projectStream_URN}" casesensitive="false"
+                          regexp="urn\:alm\:projectstream\:([0-9]+)\:.*" select="\1"/>
+                </then>
+            </if>
+            <property name="almLog.result" value="ProjectStream creation error!"/>
+            <condition property="task.resultMessage" value="Message=${almLog.detail}">
+                <isset property="almLog.detail"/>
+            </condition>
+            <property name="almLog.detail" value=""/>
+            <property name="almLog.detail2" value=""/>
+            <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+                <not> <isset property="projectStream_OID"/> </not>
+            </condition>
+            <condition property="projectStream_created" value="true">
+                <and>
+                <isset property="projectStream_OID"/>
+                <not> <isset property="projectStream.oid"/> </not>
+                </and>
+            </condition>
+            <property name="projectStream_OID"     value="0"/>
+            <property name="projectStream_NAME"    value="${projectStream_BUILDPREFIX}-${projectStream_BUILDSUFFIX}"/>
+            <property name="projectStream.oid"     value="${projectStream_OID}"/>
+            <property name="projectStream.name"    value="${projectStream_NAME}"/>
+            <property name="projectStream.description"    value="${projectStream_DESCRIPTION}"/>
+            <property name="task.result" value="${almLog.result}"/>
+            <property name="task.resultMessage" value="ProjectStream Oid=${projectStream_OID} Name=${projectStream_NAME}"/>
+    
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+                <condition>
+                    <and>
+                    <istrue value="${alm.stopOnError}"/>
+                    <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                    <not> <equals arg1="${task.status}" arg2="201"/> </not>
+                    </and>
+                </condition>
+            </fail>
+            <property name="projectStream.oid"     value="${projectStream_OID}"/>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the HTML response file                  -->
+        <!-- ************************************************** -->
+        <target name="createProjectStreamHtmlResult" if="post.almUrl" unless="xmlResponse">
+            <var name="almLog.result" unset="true"/>
+            <property name="almLog.result" value="Client Error"/>
+            <property name="task.resultMessage" value="Message=${almLog.result}"/>
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+                <condition>
+                    <istrue value="${alm.stopOnError}"/>
+                </condition>
+            </fail>
+        </target>
+
+</project>

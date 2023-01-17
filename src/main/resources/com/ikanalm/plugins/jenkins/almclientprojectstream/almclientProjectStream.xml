@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="almclientProjectStream" default="almclientProjectStream" basedir=".">
+  <description>
+  		Sample Ant script that uses the integration with a Builder (Jenkins/Hudson) for creating IKAN ALM ProjectStream
+                It works via the RESTful API.
+
+            Parameters used :
+			- builderName (e.g.: Client/Jenkins/Cloudbees/Hudson/..)
+
+		for launching the ALM ProjectStream : properties are taken from the client parameters.
+
+		Login ALM User
+			- alm.baseUrl (e.g.: http://IKAN000:8080/alm)
+			- alm.rest.userid (e.g.: global)
+			- alm.rest.password (e.g.: global)
+		Main parameters
+			- almProjectStreamCreate (e.g.: true, false)
+			- projectStreamList (e.g.: project1 [oldprefix oldsuffix])
+			- projectStreamList.withStream (e.g.: oldprefix oldsuffix)
+			- stream.acceptForcedBuild (e.g.: true)
+			- stream.buildPrefix (e.g.: newprefix)
+			- stream.buildSuffix (e.g.: newsuffix)
+			- stream.buildType.index (e.g.: 0=Full; 1=Partial; 2=Production-based; 3=Tag-based)
+                        - stream.description (e.g.: $projectName $buildPrefix - $buildSuffix
+			- stream.highestBuildNumber (e.g.: 1)
+			- stream.status.index (e.g.: 0=Under construction; 1=Planning; 2=Development; 3=Testing; 4=Stable; 5=General available; 6=Frozen; 7=Closed)
+                        - stream.tagBased (e.g.: false, true)
+                        - stream.tagTemplate (e.g.: ${streamType}_${prefix}_${suffix}[_${packageName}]_b${buildNumber})
+                        - stream.vcrBranchName (e.g.: ${buildPrefix}-${buildSuffix})
+                Always
+			- alm.stopOnError (e.g.: true, false)
+		Optional parameters
+
+  </description>
+
+    <property name="dir.commonScripts" value="${basedir}/common"/>
+    <!-- Standard target script for calling project properties and others. -->
+    <!-- Add this line where action must be done                           -->
+    <!--  <depends="initProperties"/>                                      -->
+    <import file="${dir.commonScripts}/initConfig.xml"/>
+
+    <import file="${dir.commonScripts}/createProjectStream.xml"/>
+    <!-- Getting Constant(s) Info                                          -->
+    <import file="${dir.commonScripts}/getConstant.xml"/>
+    <!-- Getting Lifecycle(s) Info                                         -->
+    <import file="${dir.commonScripts}/getLifecycle.xml"/>
+    <!-- Getting Project Info                                              -->
+    <import file="${dir.commonScripts}/getProject.xml"/>
+    <!-- Getting ProjectStream Info                                        -->
+    <import file="${dir.commonScripts}/getProjectStream.xml"/>
+    <!-- Getting Vcr Info                                                  -->
+    <import file="${dir.commonScripts}/getVcr.xml"/>
+
+    <import file="${dir.commonScripts}/httpConfigControl.xml"/>
+
+    <import file="${dir.commonScripts}/loginAlmSession.xml"/>
+    <!-- Formatting a property (upper, lower, etc.)                        -->
+    <import file="${dir.commonScripts}/propertyFormat.xml"/>
+
+    <taskdef resource="net/sf/antcontrib/antlib.xml" classpathref="antext.classpath"/>
+
+    <property environment="system"/>
+    <property name="alm.rest.rights"   value="ADMIN"/>
+
+    <!-- ************************************************************** -->
+    <!-- Initiate properties used in this script                        -->
+    <!-- ************************************************************** -->
+    <target name="initClientProjectStream" depends="initConfig,httpConfigControl">
+        <property name="projectStreamList" value=""/>
+        <property name="projectStreamList.withStream" value=""/>
+        <propertyregex override="true" casesensitive="false"
+              property="projectStreamList"  input="${projectStreamList}"
+                regexp="([;])" replace=","  global="true"/>
+
+        <if> <not> <equals arg1="${projectStreamList.withStream}" arg2=""/> </not>
+            <then>
+            <propertyregex override="true" casesensitive="false"
+                  property="projectStreamList"  input="${projectStreamList}"
+                    regexp="([,])" replace=" ${projectStreamList.withStream},"  global="true"/>
+            <var name="projectStreamList" value="${projectStreamList} ${projectStreamList.withStream}"/>
+            </then>
+        </if>
+  
+        <property name="almProjectStreamCreate" value="false"/>
+        <property name="stream.lifecycle"       value="BRANCH"/>
+        <property name="stream.vcrBranchName"   value="${stream.buildPrefix}-${stream.buildSuffix}"/>
+
+        <property name="alm.userId"        value=""/>
+	<property name="includedFiles"  value="**/*.*"/>
+	<property name="excludedFiles"  value="vcr.properties,*.cmd,*.xml,*.txt,*.log,com.ikanalm.phases.*/**"/>
+
+        <condition property="script.actionType" value="deploy" else="build">
+          <isset property="alm.deploy.oid"/>
+        </condition>
+    </target>
+    <!-- ************************************************************** -->
+    <!-- Main target for creating a ProjectStream                       -->
+    <!-- ************************************************************** -->
+    <target name="almclientProjectStream" if="${almProjectStreamCreate}" depends="initClientProjectStream,ClearFiles">
+        <mkdir dir="${local.list}"/>
+
+        <antfetch target="loginAlmSession" return="almCookie.key,almCookie.text"/>
+
+        <property name="stream.buildType.value"        value="Full Build"/>
+        <condition property="use_buildType_value" value="true">
+            <and>
+                <isset property="stream.buildType.value"/>
+                <not> <equals arg1="${stream.buildType.value}" arg2=""/> </not>
+                <not> <isset property="stream.buildType.index"/> </not>
+            </and>
+        </condition>
+        <if> <isset property="use_buildType_value"/>
+            <then>
+                <var name="constant_found" unset="true"/>
+                <var name="constant.index" unset="true"/>
+                <antfetch target="getConstantWithValue" return="constant_found,constant.index"> <!-- ,constant.value,constant.link -->
+                        <param name="constant.object" value="projectstreams"/>
+                        <param name="constant.type"   value="buildtypes"/>
+                        <param name="constant.value" value="${stream.buildType.value}"/>
+                </antfetch>
+                <if> <isset property="constant_found"/>
+                    <then> <var name="stream.buildType.index" value="${constant.index}"/> </then>
+                </if>
+            </then>
+        </if>
+        <property name="stream.status.value"        value="Planning"/>
+        <condition property="use_status_value" value="true">
+            <and>
+                <isset property="stream.status.value"/>
+                <not> <equals arg1="${stream.status.value}" arg2=""/> </not>
+                <not> <isset property="stream.status.index"/> </not>
+            </and>
+        </condition>
+        <if> <isset property="use_status_value"/>
+            <then>
+                <var name="constant_found" unset="true"/>
+                <var name="constant.index" unset="true"/>
+                <antfetch target="getConstantWithValue" return="constant_found,constant.index"> <!-- ,constant.value,constant.link -->
+                        <param name="constant.object" value="projectstreams"/>
+                        <param name="constant.type"   value="statuses"/>
+                        <param name="constant.value" value="${stream.status.value}"/>
+                </antfetch>
+                <if> <isset property="constant_found"/>
+                    <then> <var name="stream.status.index" value="${constant.index}"/> </then>
+                </if>
+            </then>
+        </if>
+        <echo message="stream.buildType.index=${stream.buildType.index}, stream.status.index=${stream.status.index}"/>
+
+        <for list="${projectStreamList}" param="projectStream" delimiter="," keepgoing="true">
+            <sequential>
+                <var name="ref.alm.projectStream" value="@{projectStream}"/>
+                <var name="project_found" unset="true"/>
+                <var name="projectStream_ignore"  unset="true"/>
+                <antcall target="createNewProjectStream"/>
+                <sleep seconds="5"/>
+            </sequential>
+        </for>
+
+        <antcall target="logoutAlmSession"/>
+    </target>
+    <!-- ************************************************************** -->
+    <!-- Testing if old ALM ProjectStream exist                         -->
+    <!-- ************************************************************** -->
+    <target name="testingOldProjectStream">
+        <fail message="ERROR: IKAN ALM Project=${project.name} cannot be found!">
+            <condition>
+                    <not> <isset property="project_found"/> </not>
+            </condition>
+        </fail>
+        <fail message="ERROR: IKAN ALM Project=${project.name} VCR=${vcr.typename} cannot be found!">
+            <condition>
+                    <not> <isset property="vcr_found"/> </not>
+            </condition>
+        </fail>
+        <if> <not> <isset property="projectStream_found"/> </not>
+            <then>
+                <echo message="WARNING: IKAN ALM Project=${project.name} Stream '${projectStream}' does not exist. New branch is not created!"/>
+            </then>
+        </if>
+    </target>
+    <!-- ************************************************************** -->
+    <!-- Create ALM ProjectStream                                       -->
+    <!-- ************************************************************** -->
+    <target name="createNewProjectStream" if="projectStream_found" depends="initProjectStream,getProject,getProjectStream,getVcr,setVcrInfo,testingOldProjectStream">
+        <property name="project.type"        value="${project_TYPE}"/>
+        <switch value="${vcr.type}">
+          <case value="GIT"> <!-- Git -->
+            <property name="stream.vcrBranchId"  value="${stream.vcrBranchName}"/>
+            <condition property="vcr.subfolder" value="${vcr.branchName}" else="${stream.vcrBranchId}">
+               <equals arg1="${projectStream.head}" arg2="0"/>
+            </condition>
+          </case>
+          <case value="SVN"> <!-- Subversion -->
+            <property name="stream.vcrBranchId"  value="${svn.branUrl}/${stream.vcrBranchName}"/>
+          </case>
+          <case value="TFVC"> <!-- TFVC -->
+            <property name="stream.vcrBranchId"  value="${project.vcrProjectName}/${stream.vcrBranchName}"/>
+          </case>
+          <default>       <!--  -->
+            <fail message="VCR=${vcr.type} not supported for this task!"/>
+          </default>
+        </switch>
+
+        <var name="lifecycle_found" unset="true"/>
+        <antfetch target="getLifecycle" return="lifecycle_found,lifecycle.oid">
+                <param name="lifecycle.name" value="${stream.lifecycle}"/>
+        </antfetch>
+        <fail message="ERROR: IKAN ALM Project=${project.name} Lifecycle=${stream.lifecycle} cannot be found!">
+            <condition>
+                    <not> <isset property="lifecycle_found"/> </not>
+            </condition>
+        </fail>
+        <property name="stream.highestBuildNumber" value="${projectStream_HIGHESTBUILDNUMBER}"/>
+        <!--property name="stream.buildType.value" value="${projectStream_BUILDTYPE_TEXT}"/-->
+        <property name="stream.buildType.index"    value="${projectStream_BUILDTYPE}"/>
+        <!--property name="stream.status.value"    value="${projectStream_STATUS_TEXT}"/-->
+        <property name="stream.status.index"       value="${projectStream_STATUS}"/>
+        <property name="stream.acceptForcedBuild"  value="${projectStream_FORCED}"/>
+        <property name="stream.tagBased"           value="${projectStream_TAGBASED}"/>
+        <!-- Test if new Branch exist -->
+        <var name="projectStream.oid"   value="0"/>
+        <var name="projectStream.link"  value=""/>
+        <var name="projectStream" unset="true"/>
+        <var name="projectStream_found" unset="true"/>
+        <var name="projectStream.buildPrefix" unset="true"/>
+        <var name="projectStream.buildSuffix" unset="true"/>
+        <var name="projectStream.ishead" unset="true"/>
+        <antfetch target="getProjectStream" return="projectStream_found">
+            <param name="projectStream.buildPrefix" value="${stream.buildPrefix}"/>
+            <param name="projectStream.buildSuffix" value="${stream.buildSuffix}"/>
+            <param name="projectStream.ishead" value="false"/> <!-- it is a branch always -->
+            <param name="projectStream_ignore" value="true"/>
+        </antfetch>
+        <!-- Using properties from alm_ant.properties file -->
+        <if> <isset property="projectStream_found"/>
+            <then>
+                <echo message="WARNING: IKAN ALM Project=${project.name} Stream '${stream.buildPrefix}-${stream.buildSuffix}' already exist. New branch is not created!"/>
+            </then>
+            <else>
+                <antfetch target="createProjectStream" return="projectStream_created">
+                </antfetch>
+                <if> <isset property="projectStream_created"/>
+                    <then> <echo message="The ProjectStream '${stream.buildPrefix}-${stream.buildSuffix}' of project '${project.name}' has been created in IKAN ALM."/> </then>
+                    <else> <echo message="The ProjectStream '${stream.buildPrefix}-${stream.buildSuffix}' of project '${project.name}' cannot be created in IKAN ALM!"/> </else>
+                </if>
+            </else>
+        </if>
+    </target>
+    <!-- ************************************************************************** -->
+    <target name="initProjectStream">
+        <!--echo message="ref.alm.projectStream=${ref.alm.projectStream}"/-->
+        <propertyregex property="ref.alm.projectStream" override="true"
+              input="${ref.alm.projectStream} "
+              regexp="(\$\{.*\})" replace="" casesensitive="false"/>
+        <propertyregex property="project.name" override="true"
+              input="${ref.alm.projectStream} "
+              regexp="^(.*) .* " select="\1" casesensitive="false"/>
+        <propertyregex property="project.name" override="true"
+              input="${ref.alm.projectStream} "
+              regexp="^(.*) .* .* " select="\1" casesensitive="false"/>
+        <propertyregex property="projectStream.buildPrefix" override="true"
+              input="${ref.alm.projectStream} "
+              regexp="^(.*) (.*) " select="\2" casesensitive="false"/>
+        <propertyregex property="projectStream.buildPrefix" override="true"
+              input="${ref.alm.projectStream} "
+              regexp="^(.*) (.*) .* " select="\2" casesensitive="false"/>
+        <propertyregex property="projectStream.buildSuffix" override="true"
+              input="${ref.alm.projectStream} "
+              regexp="^(.*) (.*) (.*) " select="\3" casesensitive="false"/>
+        <property name="project.name"              value=""/>
+        <property name="projectStream.buildPrefix" value=""/>
+        <property name="projectStream.buildSuffix" value=""/>
+        <condition property="projectStream.type" value="H" else="B">
+           <equals arg1="${projectStream.buildSuffix}" arg2=""/>
+        </condition>
+        <condition property="projectStream" value="${projectStream.buildPrefix}" else="${projectStream.buildPrefix}-${projectStream.buildSuffix}">
+           <equals arg1="${projectStream.buildSuffix}" arg2=""/>
+        </condition>
+        <property name="projectStream.name" value="${projectStream.type}_${projectStream}"/>
+
+        <echo message="project.name=${project.name}; projectStream.buildPrefix=${projectStream.buildPrefix}; projectStream.buildSuffix=${projectStream.buildSuffix}"/>
+    </target>
+</project>

@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="almclientApproval" basedir="." default="almclientApproval">
+
+	<description>
+		Sample Ant script that implements the integration with a Builder for IKAN ALM Level Request Approvals
+                It approves/rejects a Level Request via the RESTful API.
+
+        Parameters provided by builder:
+			- builderName (e.g.: Client/Jenkins/Cloudbees/Hudson/..)
+
+		for launching the ALM Approval : properties are taken from the client parameters.
+
+		Login ALM User
+			- alm.baseUrl (e.g.: http://IKAN000:8080/alm)
+			- alm.rest.userid (e.g.: global)
+			- alm.rest.password (e.g.: global)
+		Main parameters
+			Access mode
+			- levelRequest_access (lroid or level)
+			If level
+			- alm.project.name (e.g.: MYSAMPLE)
+			- alm.projectStream.buildPrefix (e.g.: 1-0)
+			- alm.projectStream.buildSuffix (optional)
+			- alm.levelRequest.levelName (e.g.: levelName)
+			- alm.package.name (e.g.: packageName)
+			If lroid
+			- alm.levelRequest.oid (e.g.: 0)
+		Always
+			- alm.stopOnError (e.g.: true, false)
+			- approveLevelRequest : (e.g.: true to approve, false to reject, ignore for ignoring the action)
+			- approveReason (mandatory)
+	        Optional parameters for controling the LevelRequest Status in searchLevelRequestStatus.xml script
+			- status.success.mandatory=false
+			- status.maxwait_minutes (e.g.: 0=Not wait for new status if LR in course)
+			- status.waiting_seconds (e.g.: 60)
+        Note:
+        If alm.levelRequest.oid is provided with levelRequest_access=lroid then alm.project.name, alm.projectStream.buildPrefix,
+                alm.projectStream.buildSuffix and alm.levelRequest.levelName are not useful. Idem for alm.package.name.
+        If alm.levelRequest.oid is not provided with levelRequest_access=level, these parameters must be provided.
+
+	</description>
+
+        <property name="dir.commonScripts" value="${basedir}/common"/>
+        <import file="${dir.commonScripts}/initConfig.xml"/>
+
+        <import file="${dir.commonScripts}/approveLevelRequest.xml"/>
+
+        <import file="${dir.commonScripts}/getApproval.xml"/>      <!-- Get an identified Approval with its oid or link -->
+
+        <import file="${dir.commonScripts}/getApprovals.xml"/>     <!-- Get Approvals (Outstanding or others for a User) -->
+
+        <import file="${dir.commonScripts}/getLevelRequest.xml"/>  <!-- Get an identified LevelRequest for status Awaiting Approval -->
+
+        <import file="${dir.commonScripts}/httpConfigControl.xml"/>
+
+        <import file="${dir.commonScripts}/loginAlmSession.xml"/>
+
+        <import file="${dir.commonScripts}/searchLevelRequestStatus.xml"/>
+
+        <taskdef resource="net/sf/antcontrib/antlib.xml" classpathref="antext.classpath"/>
+
+        <property environment="system"/>
+
+	<target name="initApproval">
+		<!-- Define properties from external tool -->
+                <property name="source" value="${system.WORKSPACE}"/>
+		<!-- Properties for creating the LR in IKAN ALM -->
+                <property name="alm.project.name" value=""/>
+                <property name="alm.projectStream.buildPrefix" value=""/>
+                <property name="alm.projectStream.buildSuffix" value=""/>
+                <property name="alm.levelRequest.levelName"  value=""/>
+                <property name="alm.levelRequest.oid"  value=""/>
+                <property name="alm.package.name" value=""/>
+                <property name="alm.vcrTag" value=""/>
+	        <property name="alm.stopOnError"      value="true"/>
+                <condition property="alm.projectStream" value="${alm.projectStream.buildPrefix}"
+                        else="${alm.projectStream.buildPrefix}-${alm.projectStream.buildSuffix}">
+                   <equals arg1="${alm.projectStream.buildSuffix}" arg2=""/>
+                </condition>
+
+                <property name="approveLevelRequest" value="true"/> <!-- Approve=true or Reject=false -->
+                <property name="approveReason"    value=""/>
+		<echo message="Approving LevelRequest=${approveLevelRequest} with Reason=${approveReason}"/>
+                <!--echo message="CLR ${alm.project.name} ${alm.projectStream} ${alm.levelRequest.levelName} ${baseNumber} User=${alm.rest.userid}"/-->
+                <property name="status.success.mandatory" value="false"/> <!-- LR Success not mandatory for approval -->
+                <property name="status.maxwait_minutes"   value="0"/> <!-- Time waiting for the LR status -->
+                <property name="levelRequest_access"      value="lroid"/>
+        </target>
+
+        <target name="validateParameters">
+		<condition property="approvingLevelRequest" value="true">
+                   <or>
+  			<equals arg1="${approveLevelRequest}" arg2="true"/>
+  			<equals arg1="${approveLevelRequest}" arg2="false"/>
+                   </or>
+                </condition>
+		<condition property="usingLevelRequest" value="true">
+                   <or>
+  			<isset property="approvingLevelRequest"/>
+                        <equals arg1="${approveLevelRequest}" arg2="ignore" casesensitive="false"/>
+                   </or>
+                </condition>
+                <fail message="Fail: Parameter approveLevelRequest=${approveLevelRequest} is not valid. Use 'true' or 'false' or 'ignore' value!" unless="usingLevelRequest"/>
+
+                <condition property="existLevelRequest" value="true"> <!-- If OID -->
+                   <and>
+                        <equals arg1="${levelRequest_access}" arg2="lroid" casesensitive="false"/>
+                	<not> <equals arg1="${alm.levelRequest.oid}" arg2=""/> </not>
+                   </and>
+                </condition>
+                <condition property="existLevelRequest" value="true"> <!-- If project, stream, level (package if exist) -->
+                   <and>
+                        <equals arg1="${levelRequest_access}" arg2="level" casesensitive="false"/>
+                	<not> <equals arg1="${alm.project.name}" arg2=""/> </not>
+                	<not> <equals arg1="${alm.projectStream.buildPrefix}" arg2=""/> </not>
+                	<not> <equals arg1="${alm.levelRequest.levelName}" arg2=""/> </not>
+                   </and>
+                </condition>
+                <condition property="existLevelRequest" value="true"> <!-- If project, stream, level (package if exist) -->
+                   <and>
+                        <equals arg1="${levelRequest_access}" arg2="level" casesensitive="false"/>
+                	<not> <equals arg1="${alm.package.name}" arg2=""/> </not>
+                   </and>
+                </condition>
+                <fail message="LevelRequest info is not defined!" unless="existLevelRequest"/>
+
+                <fail message="Fail: approveReason property is empty! Please set an Approval reason for approving=${approveLevelRequest}.">
+                     <condition> <equals arg1="${approveReason}" arg2=""/> </condition>
+                 </fail>
+	</target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : almclientApproval main                             -->
+        <!-- *********************************************************** -->
+	<target name="almclientApproval" if="approvingLevelRequest"
+                depends="initConfig,initApproval,validateParameters">
+
+                <antfetch target="loginAlmSession" return="almCookie.key,almCookie.text"/>
+
+                <!-- Control ALM Level Request -->
+                <antfetch target="controlLevelRequestStatus" return="LR_OID,LR_STATUS,LR_STATUSNAME,lr_waitapproval"/>
+                <var name="alm.levelRequest.oid"  value="${LR_OID}"/>
+                <!--property name="lr_waitapproval"  value="true"/-->
+
+                <!-- Approve/Reject ALM Level Request -->
+                <antcall target="approveALM_LevelRequest"/>
+
+                <antcall target="logoutAlmSession"/>
+        </target>
+
+        <target name="approveALM_LevelRequest" if="lr_waitapproval">
+
+                <!-- Get Approvals for the log-in User -->
+                <antfetch target="getApprovals" return="approvals_found,approvals_notfound,xmlLog.file">
+                	<param name="approvalstatuses" value="1"/>
+                	<param name="outstandingapprovals" value="true"/>
+                	<param name="alm.userid" value="${alm.rest.userid}"/>
+                </antfetch>
+
+                <property name="xmlLog.file"  value="${basedir}/temp/getApprovals_log.xml"/>
+
+                <property name="levelrequest.oid"  value="${alm.levelRequest.oid}"/>
+                <antfetch target="searchOutstandingApproval" return="approvalOid,approval_LR_found"/>
+                <if> <not> <isset property="approval_LR_found"/> </not>
+                    <then>
+                        <antcall target="logoutAlmSession"/>
+                        <fail message="ERROR: LevelRequest not found and cannot be approved by this User!" if="${alm.stopOnError}"/>
+                    </then>
+                    <else>
+                        <var name="xmlLog.file"  unset="true"/>
+                        <antcall target="approveRejectLevelRequest"/>
+                    </else>
+                </if>
+
+        </target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : Control LevelRequest Statuses                      -->
+        <!-- *********************************************************** -->
+        <target name="controlLevelRequestStatus">
+
+                <!--antfetch target="loginAlmSession" return="almCookie.key,almCookie.text"/-->
+                <property name="levelRequest_access"     value="lroid"/>
+                <switch value="${levelRequest_access}">
+                    <case value="level">
+                        <var name="levelRequestOid"  value="0"/>
+                        <property name="projectName" value="${alm.project.name}"/>
+                        <property name="projectStreamPrefix" value="${alm.projectStream.buildPrefix}"/>
+                        <condition property="projectStreamSuffix" value="${alm.projectStream.buildSuffix}" else="">
+                            <isset property="alm.projectStream.buildSuffix"/>
+                        </condition>
+                        <property name="levelName"   value="${alm.levelRequest.levelName}"/>
+                        <condition property="packageName" value="${alm.package.name}" else="">
+                            <isset property="alm.package.name"/>
+                        </condition>
+                        <property name="lrLevel"     value="true"/>
+                    </case>
+                    <default>
+                        <property name="levelRequestOid" value="${alm.levelRequest.oid}"/>
+                    </default>
+                </switch>
+                <property name="levelRequestOid"     value="0"/>
+                <property name="projectName"         value=""/>
+                <property name="projectStreamPrefix" value=""/>
+                <property name="projectStreamSuffix" value=""/>
+                <property name="levelName"           value=""/>
+                <property name="packageName"         value=""/>
+                <condition property="projectStream" value="${projectStreamPrefix}" else="${projectStreamPrefix}-${projectStreamSuffix}">
+                    <equals arg1="${projectStreamSuffix}" arg2=""/>
+                </condition>
+        
+                <if> <isset property="lrLevel"/>
+                    <then>
+                    <echo message="Using Project=${projectName} Stream=${projectStream} Level=${levelName}  Package=${packageName}"/>
+                    </then>
+                    <else>
+                    <echo message="Using Level Request=${levelRequestOid}"/>
+                    </else>
+                </if>
+
+                <antfetch target="searchLevelRequestStatus" return="LR_OID,LR_STATUS,LR_STATUSNAME,lr_completed,lr_waiting,lr_running,lr_success,status.maxwait_minutes"/>
+                <if> <not> <isset property="lr_completed"/> </not>
+                    <then>
+                        <echo message="WARNING: Level Request '${LR_OID}' control stops with status=${LR_STATUSNAME}."/>
+                    </then>
+                </if>
+                <if> <isset property="lr_success"/>
+                    <then>
+                        <echo message="Success: Level Request '${LR_OID}' is finished with status=${LR_STATUSNAME}"/>
+                    </then>
+                </if>
+<!--
+                <condition property="lr_timeend" value="true">
+                    <or>
+                    <isset property="lr_completed"/>
+                    <isset property="lr_waiting"/>
+                    </or>
+                </condition>
+                <fail message="Fail: Level Request '${LR_OID}' has status=${LR_STATUSNAME}">
+                     <condition>
+                         <and>
+                             <not> <isset property="lr_timeend"/> </not>
+                             <istrue value="${alm.stopOnError}"/>
+                         </and>
+                     </condition>
+                 </fail>
+                <fail message="Fail: Level Request '${LR_OID}' has status=${LR_STATUSNAME}">
+                     <condition>
+                         <and>
+                             <not> <isset property="lr_success"/> </not>
+                             <istrue value="${status.success.mandatory}"/>
+                             <istrue value="${alm.stopOnError}"/>
+                         </and>
+                     </condition>
+                 </fail>
+-->
+                <condition property="lr_waitapproval" value="true">
+                    <or>
+                    <equals arg1="${LR_STATUS}" arg2="2"/>  <!-- Pre-Approval  -->
+                    <equals arg1="${LR_STATUS}" arg2="11"/> <!-- Post-Approval -->
+                    </or>
+                </condition>
+                <condition property="lr_waitapprovalError" value="true">
+                    <and>
+                       <not> <isset property="lr_waitapproval"/> </not>
+                       <istrue value="${alm.stopOnError}"/>
+                    </and>
+                </condition>
+                <if> <isset property="lr_waitapprovalError"/>
+                    <then>
+                        <antcall target="logoutAlmSession"/>
+                        <fail message="Fail: Level Request '${LR_OID}' has status=${LR_STATUSNAME} and cannot apply Approval!"/>
+                    </then>
+                </if>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the XML response file                   -->
+        <!-- ************************************************** -->
+        <target name="searchOutstandingApproval">
+                <property name="task.message"    value="Get Approval of LevelRequest OID=${levelrequest.oid}"/>
+                <xmltask source="${xmlLog.file}">
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../link[@title='Approval']/@href" property="approval_LINK"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../id/text()" property="approval_OID_URN"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../level-id/text()" property="approvals_LEVELID"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../projectstream/link/@href" property="approval_PROJECTSTREAMLINK"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../projectstream/id/text()" property="approval_PROJECTSTREAM"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../status/link/@href" property="approval_STATUSLINK"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../status/id/text()" property="approval_STATUSID"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../type/link/@href" property="approval_TYPELINK"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../type/id/text()" property="approval_TYPEID"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../usergroup/link/@href" property="approval_USERGROUPLINK"/>
+                    <copy path="//approval/levelrequest/id[.='${levelrequest.oid}']/../../usergroup/id/text()" property="approval_USERGROUPID"/>
+        <!-- Not available for Outstanding Approval
+                    <copy path="//approval/levelrequest/id[text()='${levelrequest.oid}']/../../approved-by-user/@href" property="approval_USERLINK"/>
+                    <copy path="//approval/levelrequest/id[text()='${levelrequest.oid}']/../../approved-by-user/id/text()" property="approval_USERID"/>
+                    <copy path="//approval/levelrequest/id[text()='${levelrequest.oid}']/../../sequence-number/text()" property="approval_SEQUENCENUMBER"/>
+                    <copy path="//approval/levelrequest/id[text()='${levelrequest.oid}']/../../reason/text()" property="approval_REASON"/>
+        -->
+                </xmltask>
+                <if> <isset property="approval_OID_URN"/>
+                    <then>
+                        <propertyregex property="approvalOid"
+                              input="${approval_OID_URN}" casesensitive="false"
+                              regexp="urn\:alm\:approval\:([0-9]+)\:.*" select="\1"/>
+                        <property name="almLog.result"   value="=${approval_OID} for "/>
+                    </then>
+                </if>
+                <condition property="approval_LR_found" value="true">
+                    <isset property="approvalOid"/>
+                </condition>
+                <condition property="task.resultMessage" value="Found with number=${approvalOid}">
+                    <isset property="approvalOid"/>
+                </condition>
+                <condition property="task.resultMessage" value="Not found!">
+                    <not> <isset property="approvalOid"/> </not>
+                </condition>
+                <property name="approvalOid"     value="0"/>
+                <property name="almLog.result"   value="Not found"/>
+                <condition property="task.resultMessage" value="Message=${almLog.result}">
+                    <not> <isset property="approvalOid"/> </not>
+                </condition>
+                <echo message="${task.message} ${task.resultMessage}"/>
+        </target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : Approve or Reject LevelRequest                     -->
+        <!-- *********************************************************** -->
+
+        <target name="approveRejectLevelRequest" depends="getApproval">
+                <if> <isset property="approval_found"/>
+                    <then>
+                        <antcall target="approveLevelRequest"/>
+                    </then>
+                </if>
+        </target>
+
+</project>

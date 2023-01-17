@@ -1,0 +1,194 @@
+<project name="loginAlmSession" default="loginAlmSession" basedir=".">
+    <description>Log-in/Log-out IKAN ALM session</description>
+
+    <!-- Using xmltask.jar (v1.16) -->
+    <taskdef name="xmltask"       classname="com.oopsconsultancy.xmltask.ant.XmlTask" classpathref="antext.classpath"/>
+    <!-- ************************************************** -->
+    <!-- Log-in at the session                              -->
+    <!-- ************************************************** -->
+    <target name="loginAlmSession" depends="resetLoginVariables">
+        <property name="almCookie.key"   value="JSESSIONID"/>
+        <echo message="Log-in User=${alm.rest.userid}" level="info"/>
+        <fail message="ERROR: IKAN ALM alm.rest.userid or alm.rest.password cannot be empty.">
+            <condition>
+                <or>
+                <not> <isset property="alm.rest.userid"/> </not>
+                <not> <isset property="alm.rest.password"/> </not>
+                <equals  arg1="${alm.rest.userid}" arg2=""/>
+                <equals  arg1="${alm.rest.password}" arg2=""/>
+                </or>
+            </condition>
+        </fail>
+        <property name="get.almEntity"  value="${basedir}/temp/getSession"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <property name="get.headers"    value="${get.almEntity}_headers.xml"/>
+        <property name="get.almUrl"     value="${alm.apiUrl}/auth"/>
+        <property name="get.message"    value="Get userId=${alm.rest.userid}"/>
+        <var name="get.status"    unset="true"/>
+
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="true" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}" outheadersfile="${get.headers}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+            </headers>
+        </http>
+        <antfetch target="loginXmlLogResult" return="almLog.result">
+            <param name="task.status"   value="${get.status}"/>
+            <param name="task.message"  value="${get.message}"/>
+            <param name="xmlLog.file"   value="${get.almLogfile}"/>
+        </antfetch>
+
+        <property name="login.almfile" value="${basedir}/temp/loginSession.xml"/>
+        <xmltask source="${get.almLogfile}" dest="${login.almfile}">
+            <regexp path="/authentication/username/text()" pattern="myusername" replace="${alm.rest.userid}"/>
+            <regexp path="/authentication/password/text()" pattern="mypassword" replace="${alm.rest.password}"/>
+        </xmltask>
+
+        <property name="post.almEntity"  value="${basedir}/temp/postSession"/>
+        <property name="post.almLogfile" value="${post.almEntity}_log.xml"/>
+        <property name="post.headers"    value="${post.almEntity}_headers.xml"/>
+        <property name="post.almUrl"     value="${alm.apiUrl}/auth"/>
+        <property name="post.message"    value="Get Login session"/>
+
+        <var name="post.status"    unset="true"/>
+        <http url="${post.almUrl}"
+            method="POST" expected="201" failonunexpected="false" statusProperty="post.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${post.almLogfile}" outheadersfile="${post.headers}">
+            <!--credentials username="${alm.rest.userid}" password="${alm.rest.password}"/-->
+            <entity file="${login.almfile}"/>
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Content-Type" value="application/xml"/>
+            </headers>
+        </http>
+
+        <property name="post.status"    value="201"/>
+        <antfetch target="loginXmlLogResult" return="almLog.result,almUsername,almPassword">
+            <param name="task.status"   value="${post.status}"/>
+            <param name="task.message"  value="${post.message}"/>
+            <param name="xmlLog.file"   value="${post.almLogfile}"/>
+        </antfetch>
+        <property name="alm.userid"    value="${almUsername}"/>
+        <property name="alm.password"  value="${almPassword}"/>
+
+        <var name="alm_headers"  unset="true"/>
+        <loadfile property="alm_headers" srcfile="${post.headers}"/>
+        <antfetch target="cookiesLoginControl" return="almCookie.text"/>
+        <property name="almCookie.text" value="None"/>
+        <!--fail message="almCookie.text=${almCookie.text}"/-->
+    </target>
+    <target name="resetLoginVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="get.headers"    unset="true"/>
+        <var name="post.almEntity" unset="true"/>
+        <var name="post.almLogfile" unset="true"/>
+        <var name="post.almUrl"    unset="true"/>
+        <var name="post.message"   unset="true"/>
+        <var name="post.headers"   unset="true"/>
+        <var name="delete.almEntity" unset="true"/>
+        <var name="delete.almLogfile" unset="true"/>
+        <var name="delete.almUrl"    unset="true"/>
+        <var name="delete.message"   unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Log-out at the session                             -->
+    <!-- ************************************************** -->
+    <target name="logoutAlmSession" depends="resetLoginVariables">
+        <echo message="Log-out User=${alm.rest.userid}" level="info"/>
+        <property name="delete.almEntity"  value="${basedir}/temp/deleteSession"/>
+        <!--property name="delete.almLogfile" value="${delete.almEntity}_log.xml"/-->
+        <!--property name="delete.headers"    value="${delete.almEntity}_headers.xml"/-->
+        <property name="delete.almUrl"     value="${alm.apiUrl}/auth"/>
+        <property name="delete.message"    value="Delete user session"/>
+        <var name="delete.status"    unset="true"/>
+        <http url="${delete.almUrl}"
+            method="DELETE" expected="200" failonunexpected="false" statusProperty="delete.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false">
+            <headers>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <antcall target="statusLoginControl">
+            <param name="task.status"    value="${delete.status}"/>
+            <param name="task.message"   value="Message=${delete.message}"/>
+        </antcall>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML/HTML response file              -->
+    <!-- ************************************************** -->
+    <target name="loginXmlLogResult">
+        <var name="xmlLog.result" unset="true"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="/error/message/text()"  property="almLog.result"/>
+            <copy path="/authentication/username/text()" property="almUsername"/>
+            <copy path="/authentication/password/text()" property="almPassword"/>
+        </xmltask>
+        <property name="almLog.result" value="Posted"/>
+        <if> <not> <isset property="almUsername"/> </not>
+            <then> <property name="task.resultMessage" value="Message=${almLog.result}"/> </then>
+        </if>
+        <property name="task.result" value="${almLog.result}"/>
+        <propertyregex property="task.resultMessage"
+              input="${task.result}" casesensitive="false"
+              regexp="status\:([^\,\]]+)(\,|\]|\b)" select="alm_Code=\1"/>
+        <property name="task.resultMessage" value=""/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <antcall target="statusLoginControl"/>
+    </target>
+    <!-- Testing the MF ALM response header cookies -->
+    <target name="cookiesLoginControl">
+        <property name="almCookie.key"   value="JSESSIONID"/>
+        <var name="almCookie.text"  unset="true"/>
+        <propertyregex property="almCookie.text"
+              input="${alm_headers}" casesensitive="false"
+              regexp="Set-Cookie\:\ ${almCookie.key}\=([^\,\;\]]+)(\;|\]|\b)" select="\1"/>
+        <property name="almCookie.text" value=""/>
+        <if> <equals arg1="${almCookie.text}" arg2=""/>
+            <then>
+                <antcall target="statusLoginControl">
+                    <param name="task.status"    value="404"/>
+                    <param name="task.message"   value="Message=Error for JSESSIONID cookie"/>
+                </antcall>
+            </then>
+        </if>
+    </target>
+
+    <!-- Testing the MF ALM response statuses -->
+    <target name="statusLoginControl">
+        <condition property="statusOK" value="true">
+            <or>
+                <equals arg1="${task.status}" arg2="200"/>
+                <equals arg1="${task.status}" arg2="201"/>
+            </or>
+        </condition>
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <isset property="statusOK"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+</project>

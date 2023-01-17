@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<project name="convertXmlProperties" default="convertXmlProperties" basedir=".">
+<!--
+    Calling procedure:
+      <antcallback antfile="${basedir}/common/convertXmlProperties.xml"
+                return="convertedFile">
+         <property name="xmlfile"    value="${basedir}/resources/file.xml"/>
+         <property name="xmlcontrol" value="true"/>
+      </antcallback>
+      <property file="${convertedFile}"/>
+-->
+  <target name="propertyFileType">
+      <property name="xmlfile"    value="${basedir}/resources/file.xml"/>
+      <property name="xmlcontrol" value="true"/>
+
+      <fail message="The file ${xmlfile} is not found!">
+          <condition>
+            <and>
+            <istrue value="xmlcontrol"/>
+            <not> <available file="${xmlfile}"/> </not>
+            </and>
+          </condition>
+      </fail>
+
+      <propertyregex property="ptysuffix"
+          input="${xmlfile}"
+          regexp=".*\.([\w]+)$"  select="\1" casesensitive="false"/>
+      <property name="ptysuffix" value="xml"/>
+      <condition property="isXmlFile" value="true">
+          <and>
+          <equals arg1="${ptysuffix}" arg2="xml"/>
+          <available file="${xmlfile}"/>
+          </and>
+      </condition>
+      <var name="convertedFile"  unset="true"/>
+  </target>
+  <!-- ************************************************* -->
+  <!-- Normalized properties used to run scripts         -->
+  <!-- ************************************************* -->
+  <target name="convertXmlProperties" if="isXmlFile" depends="propertyFileType">
+      <property name="xmlprop"  value="xmlprop"/>
+      <basename property="xmlfilename"   file="${xmlfile}" suffix="${ptysuffix}"/>
+      <property name="convertedFile" value="${basedir}/${xmlprop}_${xmlfilename}.properties"/>
+      <copy file="${xmlfile}" tofile="${convertedFile}">
+            <filterchain> <expandproperties/> </filterchain>
+      </copy>
+      <xmlproperty file="${convertedFile}"
+               keepRoot="false" collapseAttributes="true" prefix="${xmlprop}"/>
+
+      <echoproperties destfile="${convertedFile}" prefix="${xmlprop}."/>
+      <replaceregexp flags="g" file="${convertedFile}"
+                     match="${xmlprop}\." replace="" byline="true"/>
+  </target>
+</project>

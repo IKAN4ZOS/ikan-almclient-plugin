@@ -1,0 +1,491 @@
+<project name="getPackage" default="getPackage" basedir=".">
+    <description>
+        Get a Package via Rest Api for info and/or files using Oid, Name or Link parameter
+        Provide the ETag text in the 'almETag.text' property
+        If asked with listPackageFiles=true Files are:
+            - created in [temp.package] location
+            - listed in packageFiles_included property
+            - listed in a filerevisions.csvfile file after the header line (filerevision.colnames)
+    </description>
+    <!-- ************************************************** -->
+    <!-- Main targets                                       -->
+    <!-- ************************************************** -->
+    <target name="getPackage" depends="initPackageProperties,getOnePackage,packageXmlResult,packageHtmlResult">
+        <fail message="ERROR: IKAN ALM Get Package cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="test_package_exist"/> </not>
+                    <not> <isset property="package_found"/> </not>
+                    <not> <isset property="package_notfound"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <if> <not> <isset property="package_found"/> </not>
+            <then> <echo message="IKAN ALM Package is not found."/> </then>
+        </if>
+
+        <!--antcall target="resetPackageVariables"/-->
+    </target>
+    <target name="getPackageFilerevisions" depends="initPackageProperties,getPackageFiles,packageFilesXmlResult,packageHtmlResult">
+        <fail message="ERROR: IKAN ALM Get Package Files cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="package_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <!-- Managing a CSV file of filerevisions if asked -->
+        <property name="listPackageFiles"   value="false"/>
+        <condition property="setPackageFiles" value="true">
+            <and>
+                <istrue value="${listPackageFiles}"/>
+                <isset property="packagefiles_found"/>
+            </and>
+        </condition>
+        <property name="source" value="${basedir}"/>
+        <property name="field.separator" value="|"/>
+        <property name="filerevisions.csvfile"  value="${source}/package_${package.oid}_filerevisions.csv"/>
+        <!-- Temporary package location of linked dummy files already -->
+        <property name="temp.package" value="${basedir}/temp/package/${package.oid}"/>
+        <propertyregex override="true" casesensitive="false"
+            property="temp.package"  input="${temp.package}"
+              regexp="([\\/])" replace="/" global="true"/>
+        <antfetch target="listingPackageFiles" return="packageFiles_included,filerevision.colnames"/>
+        <property name="packageFiles_included"    value=""/>
+        <!--antcall target="resetPackageVariables"/-->
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting Package access option                    -->
+    <!-- ************************************************** -->
+    <target name="initPackageProperties">
+	<property name="alm.stopOnError"      value="true"/>
+        <condition property="package.oid" value="${alm.package.oid}">
+            <and>
+                <isset property="alm.package.oid"/>
+                <not> <equals arg1="${alm.package.oid}" arg2=""/> </not>
+                <not> <equals arg1="${alm.package.oid}" arg2="0"/> </not>
+            </and>
+        </condition>
+        <condition property="package.name" value="${alm.package.name}">
+            <and>
+                <isset property="alm.package.name"/>
+                <not> <equals arg1="${alm.package.name}" arg2=""/> </not>
+            </and>
+        </condition>
+        <if> <equals arg1="${package.oid}" arg2=""/>
+            <then> <var name="package.oid" unset="true"/> </then>
+        </if>
+        <if> <equals arg1="${package.oid}" arg2="0"/>
+            <then> <var name="package.oid" unset="true"/> </then>
+        </if>
+        <if> <equals arg1="${package.name}" arg2=""/>
+            <then> <var name="package.name" unset="true"/> </then>
+        </if>
+        <if> <equals arg1="${package.link}" arg2=""/>
+            <then> <var name="package.link" unset="true"/> </then>
+        </if>
+        <var name="readETag"  unset="true"/>
+        <condition property="readETag" value="true">
+            <or>
+                <isset property="package.oid"/>
+                <isset property="package.link"/>
+            </or>
+        </condition>
+        <property name="filerevision.names" value="FILEPATH,FILENAME,REVISION"/>
+        <var name="packageFiles_included"    value=""/>
+    </target>
+
+    <target name="resetPackageVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.headers"    unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Getting a Package from Oid                         -->
+    <!-- ************************************************** -->
+    <target name="getPackageFromOid" if="package.oid">
+        <property name="get.almUrl"     value="${alm.apiUrl}/packages/${package.oid}"/>
+        <property name="get.message"    value="Get Package Oid=${package.oid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting a Package from Link                        -->
+    <!-- ************************************************** -->
+    <target name="getPackageFromLink" if="package.link">
+        <property name="get.almUrl"     value="${package.link}"/>
+        <property name="get.message"    value="Get Package Link=${package.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting a Package from Name                        -->
+    <!-- ************************************************** -->
+    <target name="getPackageFromName" if="package.name">
+        <property name="get.almUrl"     value="${alm.apiUrl}/packages?name=${package.name}&amp;page=1&amp;pagesize=10&amp;sortdirection=asc"/>
+        <property name="get.message"    value="Get Package Name=${package.name}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Package                                    -->
+    <!-- ************************************************** -->
+    <target name="getOnePackage" if="get.almUrl" depends="resetPackageVariables,getPackageFromOid,getPackageFromLink,getPackageFromName">
+        <property name="get.almEntity"  value="${basedir}/temp/getPackage"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <property name="get.headers"    value="${get.almEntity}_headers.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}" outheadersfile="${get.headers}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="404"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="packageXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="//packages/@count"  property="packages_count"/>
+            <copy path="//package/id/text()"  property="package_OID_URN"/>
+            <copy path="//package/name/text()"  property="package_NAME"/>
+            <copy path="//package/link/@href"  property="package.link"/>
+            <copy path="//package/description/text()"  property="package_DESCRIPTION"/>
+            <copy path="//package/archived/text()"  property="package_ARCHIVED"/>
+            <copy path="//package/vcr-tag/text()"  property="package_VCRTAG"/>
+            <copy path="//package/owner/id/text()"  property="package_OWNER"/>
+            <copy path="//package/owner/link/@href"  property="package_OWNER_LINK"/>
+            <copy path="//package/project/id/text()"  property="package_PROJECT"/>
+            <copy path="//package/project/link/@href"  property="package_PROJECT_LINK"/>
+            <copy path="//package/project-name/text()"  property="package_PROJECTNAME"/>
+            <copy path="//package/projectstream/id/text()"  property="package_PROJECTSTREAM"/>
+            <copy path="//package/projectstream/link/@href"  property="package_PROJECTSTREAM_LINK"/>
+            <copy path="//package/projectstream-short-notation/text()"  property="package_PROJECTSTREAM_NOTATION"/>
+            <copy path="//package/status/id/text()"  property="package_STATUS_CODE"/>
+            <copy path="//package/status/text/text()"  property="package_STATUS_TEXT"/>
+            <copy path="//package/target-release-date/text()"  property="package_TARGETDATE"/>
+        </xmltask>
+        <if> <equals arg1="${task.status}" arg2="200"/>
+            <then> 
+                <property name="packages_count"  value="1"/>
+                <var name="almETag.text"   unset="true"/>
+                <antfetch target="packageETag" return="almETag.text"/>
+                <property name="almETag-Package.text"     value="${almETag.text}"/>
+            </then>
+        </if>
+        <property name="packages_count"  value="0"/>
+        <condition property="task.resultMessage" value="Message=No Package found">
+            <equals arg1="${packages_count}" arg2="0"/>
+        </condition>
+        <if> <isset property="package_OID_URN"/>
+            <then>
+                <propertyregex property="package_OID"
+                      input="${package_OID_URN}" casesensitive="false"
+                      regexp="urn\:alm\:package\:([0-9]+)\:.*" select="\1"/>
+            </then>
+        </if>
+        <property name="almLog.result"   value="Not found"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="package_OID"/> </not>
+        </condition>
+        <condition property="package_found" value="true">
+            <isset property="package_OID"/>
+        </condition>
+        <condition property="package_notfound" value="true">
+            <equals arg1="${task.status}" arg2="400"/>
+        </condition>
+        <property name="package_OID"     value="0"/>
+        <property name="package_NAME"    value="Unknown"/>
+        <property name="package_OWNER"   value=""/>
+        <property name="package_DESCRIPTION"   value="Package ${package_OID}"/>
+        <property name="package_STATUS_TEXT"   value=""/>
+        <property name="package_TARGETDATE"   value=""/>
+        <property name="package.oid"     value="${package_OID}"/>
+        <property name="package.name"    value="${package_NAME}"/>
+        <property name="package.description"    value="${package_DESCRIPTION}"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Package=${package_NAME}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                <not> <equals arg1="${task.status}" arg2="400"/> </not>
+                <not> <equals arg1="${task.status}" arg2="404"/> </not>
+                </and>
+            </condition>
+        </fail>
+
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Package Filerevisions from Oid             -->
+    <!-- ************************************************** -->
+    <!-- ************************************************** -->
+    <target name="getPackageFiles">
+        <!-- Force resetPackageVariables -->
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.headers"    unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+
+        <property name="get.almEntity"  value="${basedir}/temp/getPackageFilerevisions"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <property name="get.almUrl"     value="${alm.apiUrl}/packages"/>
+        <property name="get.message"    value="Get Package Oid=${package.oid} Filerevisions"/>
+        <property name="get.headers"    value="${get.almEntity}_headers.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}/${package.oid}/filerevisions"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}" outheadersfile="${get.headers}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="404"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="packageFilesXmlResult" if="xmlResponse">
+        <var name="xmlLog.result" unset="true"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="//filerevisions/@count"  property="packagefiles_count"/>
+            <copy path="//filerevisions/filerevision/name/text()" property="packagefile_NAME" append="true" propertySeparator=","/>
+            <copy path="//filerevisions/filerevision/path/text()" property="packagefile_PATH" append="true" propertySeparator=","/>
+            <copy path="//filerevisions/filerevision/revision/text()" property="packagefile_REVISION" append="true" propertySeparator=","/>
+        </xmltask>
+        <property name="packagefiles_count" value="0"/>
+        <condition property="task.resultMessage" value="Message=No File for the Package=${package.name}">
+            <equals arg1="${packagefiles_count}" arg2="0"/>
+        </condition>
+        <condition property="packagefiles_found" value="true">
+            <isgreaterthan arg1="${packagefiles_count}" arg2="0"/>
+        </condition>
+        <if> <not> <isset property="packagefile_NAME"/> </not>
+            <then>
+            <property name="task.resultMessage" value="Message=${almLog.result}"/>
+            </then>
+        </if>
+        <if> <equals arg1="${task.status}" arg2="200"/>
+            <then> 
+                <property name="packages_count"  value="1"/>
+                <var name="almETag.text"   unset="true"/>
+                <antfetch target="packageETag" return="almETag.text"/>
+                <property name="almETag-Contents.text"     value="${almETag.text}"/>
+            </then>
+        </if>
+        <condition property="package_found" value="true">
+            <equals arg1="${task.status}" arg2="200"/>
+        </condition>
+        <condition property="package_notfound" value="true">
+            <equals arg1="${task.status}" arg2="400"/>
+        </condition>
+        <property name="packagefile_NAME"     value=""/>
+        <property name="packagefile_VALUE"    value=""/>
+        <property name="almLog.result" value="File(s) not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <var name="files.list" unset="true"/>
+        <sortlist property="files.list"  delimiter="," value="${packagefile_NAME}"/>
+        <var name="oldlisted" value=""/>
+        <for list="${files.list}" param="fileName" delimiter=",">
+            <sequential>
+                <if> <not> <equals arg1="${oldlisted}" arg2="@{fileName}"/> </not>
+                    <then>
+                        <!-- Cleaning column parameters -->
+                        <for list="${filerevision.names}" param="colName" delimiter=",">
+                            <sequential> <var name="@{colName}" unset="true"/> </sequential>
+                        </for>
+                        <var name="FILENAME"  unset="true"/>
+                        <var name="FILEPATHS" unset="true"/>
+                        <xmltask source="${get.almLogfile}">
+                            <copy path="//filerevisions/filerevision/name[text()='@{fileName}']/../name/text()" property="FILENAME"/>
+                            <copy path="//filerevisions/filerevision/name[text()='@{fileName}']/../path/text()" property="FILEPATHS" append="true" propertySeparator="|"/>
+                        </xmltask>
+                        <!-- Add file to packageFiles_included property -->
+                        <for list="${FILEPATHS}" param="filePath" delimiter="|">
+                            <sequential>
+                                <var name="FILEPATH" value="@{filePath}"/>
+				<var name="packageFiles_included"    value="${packageFiles_included}${FILEPATH}/${FILENAME},"/>
+            		    </sequential>
+                        </for>
+                    </then>
+                </if>
+                <var name="oldlisted" value="@{fileName}"/>
+            </sequential>
+        </for>
+        <propertyregex property="packageFiles_included" override="true"
+                      input="${packageFiles_included}" casesensitive="false"
+                      regexp="(\,)$" replace=""/>
+
+        <property name="task.resultMessage" value="Package files=${packageFiles_included}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="packageHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Searching at the Etag response header parameter    -->
+    <!-- ************************************************** -->
+    <target name="packageETag" if="readETag">
+        <var name="alm_headers"  unset="true"/>
+        <loadfile property="alm_headers" srcfile="${get.headers}"/>
+        <var name="almETag.text" unset="true"/>
+        <propertyregex property="almETag.text"
+              input="${alm_headers}" casesensitive="false"
+              regexp="ETag\:\ (\&quot;[\w]+\&quot;)" select="\1"/>
+        <fail message="ERROR: ETag response header parameter is not found!">
+            <condition>
+                <and>
+                    <not> <isset property="almETag.text"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Creating dummy files in [temp.package] location    -->
+    <!-- Adding them in packageFiles_included property      -->
+    <!-- List in filerevisions.csvfile file after header    -->
+    <!-- ************************************************** -->
+    <target name="listingPackageFiles" if="setPackageFiles">
+        <mkdir dir="${temp.package}"/>
+        <echo message="${filerevision.names}" level="info"/>
+        <propertyregex property="filerevision.colnames" override="true"
+                      input="${filerevision.names}" casesensitive="false"
+                      regexp="(,)" replace="${field.separator}" global="true"/>
+        <echo message="${filerevision.colnames}${line.separator}" file="${filerevisions.csvfile}"/>
+
+        <var name="files.list" unset="true"/>
+        <sortlist property="files.list"  delimiter="," value="${packagefile_NAME}"/>
+        <var name="oldlisted" value=""/>
+        <for list="${files.list}" param="fileName" delimiter=",">
+            <sequential>
+                <if> <not> <equals arg1="${oldlisted}" arg2="@{fileName}"/> </not>
+                  <then>
+                      <!-- Cleaning column parameters -->
+                      <for list="${filerevision.colnames}" param="colName" delimiter="${field.separator}">
+                          <sequential> <var name="@{colName}" unset="true"/> </sequential>
+                      </for>
+                      <var name="FILENAME"  unset="true"/>
+                      <var name="FILEPATHS" unset="true"/>
+                      <xmltask source="${get.almLogfile}">
+                          <copy path="//filerevisions/filerevision/name[text()='@{fileName}']/../name/text()" property="FILENAME"/>
+                          <copy path="//filerevisions/filerevision/name[text()='@{fileName}']/../path/text()" property="FILEPATHS" append="true" propertySeparator="|"/>
+                          <!--copy path="//filerevisions/filerevision/name[text()='@{fileName}']/../revision/text()" property="REVISION"/-->
+                      </xmltask>
+<!-- Completed always
+                      <property name="REVISION" value="LATEST"/>
+                      <for list="${filerevision.colnames}" param="colName" delimiter="${field.separator}">
+                          <sequential>
+                          <property name="@{colName}" value=""/>
+                          </sequential>
+                      </for>
+-->
+                      <!-- Create the file in temporary folder and add it to filerevisions.csvfile -->
+                      <for list="${FILEPATHS}" param="filePath" delimiter="|">
+                          <sequential>
+                              <var name="FILEPATH" value="@{filePath}"/>
+                              <xmltask source="${get.almLogfile}">
+                                  <copy path="//filerevisions/filerevision/name[text()='@{fileName}']/../path[text()='${FILEPATH}']/../revision/text()" property="REVISION"/>
+                              </xmltask>
+                              <echo file="${temp.package}/${FILEPATH}/${FILENAME}" message="Package Link file revision=${REVISION}"/>
+                              <!-- Complete the CSV file line with the file info -->
+                              <var name="fileLine" value=""/>
+                              <for list="${filerevision.colnames}" param="colName" delimiter="${field.separator}">
+                                  <sequential>
+                                      <var name="colValue" value=""/>
+                                      <propertycopy property="colValue" from="@{colName}" silent="true" override="true"/>
+                                      <var name="fileLine" value="${fileLine}${colValue}${field.separator}"/>
+                                  </sequential>
+                              </for>
+                              <propertyregex property="fileLine" override="true"
+                                            input="${fileLine}" casesensitive="false"
+                                            regexp="(\${field.separator})$" replace="${line.separator}"/>
+              
+                              <echo message="${fileLine}" file="${filerevisions.csvfile}" append="true"/>
+                              <propertyregex property="fileLine" override="true"
+                                            input="${fileLine}" casesensitive="false" global="true"
+                                            regexp="(\${field.separator})" replace=","/>
+                              <echo message="${fileLine}" level="info"/>
+          		  </sequential>
+                      </for>
+                  </then>
+                </if>
+                <var name="oldlisted" value="@{fileName}"/>
+            </sequential>
+        </for>
+    </target>
+</project>

@@ -1,0 +1,112 @@
+<project name="searchLevelRequestStatus" default="searchLevelRequestStatus" basedir=".">
+        <description>Search LevelRequest Status</description>
+        <!-- ************************************************** -->
+        <!-- Main target                                        -->
+        <!-- ************************************************** -->
+        <!-- Running for Level Request control   -->
+        <target name="searchLevelRequestStatus">
+    
+                <property name="status.maxwait_minutes"   value="30"/> <!-- value in minutes -->
+                <property name="status.waiting_seconds"   value="60"/> <!-- value in seconds -->
+                <math result="status.maxwait" operand1="${status.maxwait_minutes}" operation="multiply" operand2="60" datatype="int"/>
+                <math result="status.maxround" operand1="${status.maxwait}" operation="divide" operand2="${status.waiting_seconds}" datatype="int"/>
+
+                <property name="status.lastwait" value="${status.maxwait}"/> <!-- last wait time -->
+                <property name="status.running_for" value="${status.maxround}"/> <!-- loops if 0 no loop -->
+                <if> <islessthan arg1="${status.running_for}" arg2="1"/>
+                    <then>
+                        <antfetch target="levelRequestStatus_extract" return="LR_OID,LR_STATUS,LR_STATUSNAME,lr_completed,lr_waiting,lr_running,lr_success"/>
+                        <if> <not> <isset property="lr_completed"/> </not>
+                            <then>
+                            <echo message="Level Request=${LR_OID} has status=${LR_STATUSNAME}!"/>
+                            </then>
+                        </if>
+                    </then>
+                    <else>
+                        <for param="i" end="${status.running_for}">
+                	      <sequential>
+                              <var name="ind" value="@{i}"/>
+                              <if> <not> <isset property="lr_completed"/> </not>
+                                  <then>
+                              <!--echo message="Waiting for loop ${ind} lr_completed=${lr_completed}"/-->
+                                      <var name="LR_OID"     unset="true"/>
+                                      <var name="LR_STATUS"  unset="true"/>
+                                      <var name="LR_STATUSNAME" unset="true"/>
+                                      <antfetch target="levelRequestStatus_extract" return="LR_OID,LR_STATUS,LR_STATUSNAME,lr_completed,lr_waiting,lr_running,lr_success"/>
+                                      <if> <not> <isset property="lr_completed"/> </not>
+                                          <then>
+                                              <echo message="Level Request=${LR_OID} has status=${LR_STATUSNAME}! This Job waits for ${status.lastwait} seconds yet."/>
+                                              <sleep seconds="${status.waiting_seconds}"/>
+                                              <math result="status.lastwait" operand1="${status.lastwait}" operation="subtract" operand2="${status.waiting_seconds}" datatype="int"/>
+                                              <var name="lr_running"    unset="true"/>
+                                              <var name="lr_waiting"    unset="true"/>
+                                          </then>
+                                      </if>
+                                  </then>
+                              </if>
+                              </sequential>
+                        </for>
+                    </else>
+                </if>
+        </target>
+        <!-- *********************************************************** -->
+        <!-- Main target                                                 -->
+        <!-- *********************************************************** -->
+        <target name="levelRequestStatus_extract" depends="getLevelRequest">
+                <property name="field.separator" value=","/>
+                <property name="statusLine" value="${LR_OID}${field.separator}${LR_ACTIONTYPE}${field.separator}${LR_STATUSNAME}${field.separator}${LR_VCRTAG}"/>
+                <echo message="${statusLine}" level="info"/>
+                <echo file="${basedir}/temporary.log" message="${statusLine}"/>
+                <condition property="existLevelRequest">
+                    <equals arg1="${get.status}" arg2="200"/>
+                </condition>
+                <var name="lr_running"    unset="true"/>
+                <var name="lr_waiting"    unset="true"/>
+                <var name="lr_completed"  unset="true"/>
+                <var name="lr_success"    unset="true"/>
+                <antfetch target="searchStatus" return="lr_completed,lr_waiting,lr_running,lr_success"/>
+        </target>
+        <!-- *********************************************************** -->
+        <!-- LevelRequest not found                                      -->
+        <!-- *********************************************************** -->
+        <target name="ignoreStatus" unless="existLevelRequest">
+                <property name="lr_waiting" value="true"/>
+        </target>
+        <!-- *********************************************************** -->
+        <!-- Test Status if LevelRequest is completed                    -->
+        <!-- *********************************************************** -->
+        <target name="searchStatus" if="existLevelRequest" depends="ignoreStatus">
+                <condition property="lr_running" value="true">
+                    <or>
+                    <equals arg1="${LR_STATUS}" arg2="4"/>
+                    <equals arg1="${LR_STATUS}" arg2="9"/>
+                    </or>
+                </condition>
+                <condition property="lr_waiting" value="true">
+                    <or>
+                    <equals arg1="${LR_STATUS}" arg2="0"/>
+                    <equals arg1="${LR_STATUS}" arg2="1"/>
+                    <equals arg1="${LR_STATUS}" arg2="2"/>
+                    <equals arg1="${LR_STATUS}" arg2="11"/>
+                    </or>
+                </condition>
+                <condition property="lr_completed" value="true">
+                    <or>
+                    <equals arg1="${LR_STATUS}" arg2="3"/>
+                    <equals arg1="${LR_STATUS}" arg2="5"/>
+                    <equals arg1="${LR_STATUS}" arg2="6"/>
+                    <equals arg1="${LR_STATUS}" arg2="7"/>
+                    <equals arg1="${LR_STATUS}" arg2="8"/>
+                    <equals arg1="${LR_STATUS}" arg2="9"/>
+                    <equals arg1="${LR_STATUS}" arg2="10"/>
+                    </or>
+                </condition>
+                <condition property="lr_success" value="true">
+                    <or>
+                    <equals arg1="${LR_STATUS}" arg2="6"/>
+                    <equals arg1="${LR_STATUS}" arg2="7"/>
+                    </or>
+                </condition>
+        </target>
+
+</project>

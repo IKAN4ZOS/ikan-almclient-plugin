@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<project name="almclientLevelRequestIssues" default="almclientLevelRequestIssues" basedir=".">
+    <description>
+		Sample Ant script that uses the integration with a Builder (Jenkins/Hudson) for searching IKAN ALM Level Requests Issues
+                It works via the RESTful API.
+
+            Parameters used :
+			- builderName (e.g.: Client/Jenkins/Cloudbees/Hudson/..)
+
+		for launching the ALM LevelRequestIssues : properties are taken from the client parameters.
+
+		Login ALM User
+			- alm.baseUrl (e.g.: http://IKAN000:8080/alm)
+			- alm.rest.userid (e.g.: global)
+			- alm.rest.password (e.g.: global)
+		Main parameters
+			- levelRequestOid (optional)
+			- project.name (e.g.: MYSAMPLE)
+			- projectStreamPrefix (e.g.: 1-0)
+			- projectStreamSuffix (optional)
+			- levelName (e.g.: LEVEL)
+			- packageName (optional)
+                Always
+			- alm.stopOnError (e.g.: true/false)
+		Optional parameters
+			- levelRequest_access (e.g.: lroid, level)
+			- levelRequestIssues.fileType (e.g.: lst, csv, xls)
+                        - issue.file : File of issues found (e.g.: levelRequestIssues.lst)
+			- excel.sheetName : (e.g.: levelRequestIssues)
+    </description>
+
+    <property name="dir.commonScripts" value="${basedir}/common"/>
+    <import file="${dir.commonScripts}/initConfig.xml"/>
+
+    <!--import file="${basedir}/common/getIssue.xml"/-->
+
+    <import file="${dir.commonScripts}/getIts.xml"/>
+    <!-- Getting LevelRequest Info                               -->
+    <import file="${dir.commonScripts}/getLevelRequest.xml"/>
+    <!-- Getting LevelRequest Issues                             -->
+    <import file="${dir.commonScripts}/getLevelRequestIssues.xml"/>
+
+    <import file="${dir.commonScripts}/getMachineIP.xml"/>
+    <!-- Getting Package Info                                    -->
+    <import file="${dir.commonScripts}/getPackage.xml"/>
+    <!-- Getting Project Info                                    -->
+    <import file="${dir.commonScripts}/getProject.xml"/>
+    <!-- Getting ProjectStream Info                              -->
+    <import file="${dir.commonScripts}/getProjectStream.xml"/>
+
+    <import file="${dir.commonScripts}/httpConfigControl.xml"/>
+
+    <import file="${dir.commonScripts}/loginAlmSession.xml"/>
+
+    <taskdef resource="net/sf/antcontrib/antlib.xml" classpathref="antext.classpath"/>
+
+    <property name="alm.rest.rights"   value="PROJECT"/>
+
+    <!-- *********************************************************** -->
+    <!-- Main target almclientLevelRequestIssues                     -->
+    <!-- *********************************************************** -->
+    <target name="almclientLevelRequestIssues" depends="initConfig,httpConfigControl,initLevelRequestIssuesProperties"> <!--,ClearDirs-->
+
+        <property name="levelRequestIssues.fileType"   value="lst"/>
+        <fail message="Error! levelRequestIssues.fileType property is not correct! Usage is: csv, lst or xls">
+            <condition>
+                <and>
+                <not> <equals arg1="${levelRequestIssues.fileType}" arg2="csv"/> </not>
+                <not> <equals arg1="${levelRequestIssues.fileType}" arg2="lst"/> </not>
+                <not> <equals arg1="${levelRequestIssues.fileType}" arg2="xls"/> </not>
+                </and>
+            </condition>
+        </fail>
+        <property name="levelRequest_access"     value="lroid"/>
+        <switch value="${levelRequest_access}">
+            <case value="level">
+                <var name="levelRequestOid"  value="0"/>
+                <property name="lrLevel" value="true"/>
+            </case>
+            <default>
+                <property name="levelRequestOid"     value="0"/>
+            </default>
+        </switch>
+        <property name="projectName"         value=""/>
+        <property name="projectStreamPrefix" value=""/>
+        <property name="projectStreamSuffix" value=""/>
+        <property name="levelName"           value=""/>
+        <property name="packageName"         value=""/>
+        <condition property="projectStream" value="${projectStreamPrefix}" else="${projectStreamPrefix}-${projectStreamSuffix}">
+            <equals arg1="${projectStreamSuffix}" arg2=""/>
+        </condition>
+
+        <if> <isset property="lrLevel"/>
+            <then>
+            <echo message="Using Project=${projectName} Stream=${projectStream} Level=${levelName}  Package=${packageName}"/>
+            </then>
+            <else>
+            <echo message="Using Level Request=${levelRequestOid}"/>
+            </else>
+        </if>
+
+        <property name="issue.file" value="${local.list}/levelRequestIssues.lst"/>
+        <basename property="issue.filebase" file="${issue.file}"/>
+        <propertyregex property="fileExt"  input="${issue.filebase}"
+                      regexp=".*\.([\w]+)$" select="\1"/>
+        <basename property="issue.filename" file="${issue.file}" suffix="${fileExt}"/>
+        <dirname property="issue.dirname" file="${issue.file}"/>
+        <var name="issue.file" value="${issue.dirname}/${issue.filename}.lst"/>
+
+        <property name="excel.sheet" value="${issue.filename}"/>
+        <property name="excel.file"  value="${issue.dirname}/${excel.sheet}.xls"/>
+
+        <mkdir dir="${local.list}"/>
+        <condition property="create_list" value="true">
+          <or>
+            <equals arg1="${levelRequestIssues.fileType}" arg2="lst"/>
+            <equals arg1="${levelRequestIssues.fileType}" arg2="xls"/>
+          </or>
+        </condition>
+        <condition property="extract_table" value="true">
+          <or>
+            <equals arg1="${levelRequestIssues.fileType}" arg2="csv"/>
+            <isset property="create_list"/>
+          </or>
+        </condition>
+        <condition property="setChanges" value="true">
+          <or>
+            <equals arg1="${levelRequestIssues.fileType}" arg2="csv"/>
+            <equals arg1="${levelRequestIssues.fileType}" arg2="xls"/>
+          </or>
+        </condition>
+        <property name="csv.workFile" value="${issue.dirname}/${issue.filename}_wrk.csv"/>
+
+        <antfetch target="loginAlmSession" return="almCookie.key,almCookie.text"/>
+
+        <antcall target="levelRequestIssues_extract"/>
+
+        <antcall target="logoutAlmSession"/>
+
+        <delete quiet="true" file="${csv.workFile}"/>
+    </target>
+
+    <target name="initLevelRequestIssuesProperties">
+<!--
+        <property name="almCookie.key"   value="JSESSIONID"/>
+        <property name="alm_loginModel"  value="alm_loginStandard_xml"/>
+-->
+        <!-- Loading and converting separator of title for csv files -->
+        <property name="sql.field.separator" value="|"/>
+        <loadfile srcfile="${dir.almModels}/levelRequestIssues_names.model" property="levelRequestIssues.names"/>
+        <propertyregex property="levelRequestIssues.names" override="true"
+                      input="${levelRequestIssues.names}" casesensitive="false"
+                      regexp="(,)" replace="${sql.field.separator}" global="true"/>
+        <fail message="Error! issue.file property is not correct! ${excel.file} already exist">
+            <condition>
+                <and>
+                <not> <equals arg1="${excel.file}" arg2=""/> </not>
+                <available file="${excel.file}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+    <target name="levelRequestIssues_extract" if="extract_table" depends="getLevelRequest">
+        <condition property="existLevelRequest">
+            <equals arg1="${get.status}" arg2="200"/>
+        </condition>
+
+        <property name="LR_OID"     value="${levelRequestOid}"/>
+
+        <if> <not> <isset property="lrLevel"/> </not>
+            <then>
+                <property name="projectStream.link"  value="${LR_PROJECTSTREAM_LINK}"/>
+                <antfetch target="getProjectStream"  return="projectStream.buildPrefix,projectStream.buildSuffix"/>
+                <var name="projectStreamPrefix" value="${projectStream.buildPrefix}"/>
+                <var name="projectStreamSuffix" value="${projectStream.buildSuffix}"/>
+            </then>
+        </if>
+        <if> <isset property="LR_PACKAGE_LINK"/>
+            <then>
+                <property name="package.link" value="${LR_PACKAGE_LINK}"/>
+                <antfetch target="getPackage" return="package.oid,package.name"/>
+                <var name="packageName"  value="${package.name}"/>
+            </then>
+        </if>
+        <property name="project.oid"  value="${LR_PROJECT}"/>
+        <antfetch target="getProject" return="its.link,project_NAME"/>
+        <property name="project.name" value="${project_NAME}"/>
+
+        <antcall target="levelRequestIssues_ignore"/>
+        <antcall target="levelRequestIssues_select"/>
+    </target>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+    <target name="levelRequestIssues_ignore" unless="its.link">
+        <echo message="ERROR: IKAN ALM Project does not have an ITS relationship!"/>
+    </target>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+    <target name="levelRequestIssues_select" if="its.link">
+
+        <property name="getITS.properties"   value="getITS.properties"/>
+        <property name="setItsInfo"   value="true"/>
+        <antcall target="getIts"/>
+        <var file="${local.list}/${getITS.properties}"/>
+        <!-- Properties for createFile target -->
+        <property name="ITS_NAME"      value="${its.name}"/>
+        <property name="PROJECT_NAME"        value="${project.name}"/>
+        <property name="PROJECTSTREAMPREFIX" value="${projectStreamPrefix}"/>
+        <property name="PROJECTSTREAMSUFFIX" value="${projectStreamSuffix}"/>
+        <property name="PACKAGE_NAME"        value="${packageName}"/>
+
+        <antfetch target="getLevelRequestIssues" return="existIssue,issue_IDS_URN,get.almLogfile"/>
+
+        <antcall target="listAllIssues"/>
+        <antcall target="createFile"/>
+        <antcall target="ignoreFile"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Listing issues in csv.workfile                     -->
+    <!-- ************************************************** -->
+    <target name="listAllIssues" if="existIssue">
+        <property name="levelRequestIssue.detail" value="ISSUEID,DESCRIPTION,OWNER,PRIORITY,STATUS"/>
+        <echo message="${levelRequestIssue.detail}" level="info"/>
+        <for list="${issue_IDS_URN}" param="issueUrn" delimiter=",">
+            <sequential>
+                <for list="${levelRequestIssue.detail}" param="colName" delimiter=",">
+                    <sequential>
+                    <var name="@{colName}" unset="true"/>
+                    </sequential>
+                </for>
+                <xmltask source="${get.almLogfile}">
+                    <copy path="//issues/issue/id[contains(text(),'@{issueUrn}')]/../issue-id/text()" property="ISSUEID"/>
+                    <copy path="//issues/issue/id[contains(text(),'@{issueUrn}')]/../description/text()" property="DESCRIPTION"/>
+                    <copy path="//issues/issue/id[contains(text(),'@{issueUrn}')]/../owner/text()" property="OWNER"/>
+                    <copy path="//issues/issue/id[contains(text(),'@{issueUrn}')]/../priority/text()" property="PRIORITY"/>
+                    <copy path="//issues/issue/id[contains(text(),'@{issueUrn}')]/../status/text()" property="STATUS"/>
+                </xmltask>
+                <for list="${levelRequestIssue.detail}" param="colName" delimiter=",">
+                    <sequential>
+                    <property name="@{colName}" value=""/>
+                    </sequential>
+                </for>
+                <var name="issueLine" value=""/>
+                <for list="${levelRequestIssue.detail}" param="colName" delimiter=",">
+                    <sequential>
+                    <var name="colValue" value=""/>
+                    <propertycopy property="colValue" from="@{colName}" silent="true" override="true"/>
+                    <var name="issueLine" value="${issueLine}${colValue},"/>
+                    </sequential>
+                </for>
+                <propertyregex property="issueLine" override="true"
+                              input="${issueLine}" casesensitive="false"
+                              regexp="(\,)$" replace=""/>
+                <echo message="${issueLine}" level="info"/>
+
+                <var name="issueLine" value=""/>
+                <for list="${levelRequestIssues.names}" param="colName" delimiter="${sql.field.separator}">
+                    <sequential>
+                    <var name="colValue" value=""/>
+                    <propertycopy property="colValue" from="@{colName}" silent="true" override="true"/>
+                    <var name="issueLine" value="${issueLine}${colValue}${sql.field.separator}"/>
+                    </sequential>
+                </for>
+<!--
+                <propertyregex property="issueLine" override="true"
+                              input="${issueLine}" casesensitive="false"
+                              regexp="(\${sql.field.separator})$" replace=""/>
+-->
+                <echo message="${issueLine}${line.separator}" file="${csv.workFile}" append="true"/>
+            </sequential>
+        </for>
+    </target>
+    <!-- *********************************************************** -->
+    <!-- Create File if issue not found                              -->
+    <!-- *********************************************************** -->
+    <target name="ignoreFile" unless="existIssue">
+        <echo message="No Issue found for this request! Resulting file is not created."/>
+        <echo file="${propertyFileSource}" append="true" message="${line.separator}issues.list=${line.separator}"/>
+    </target>
+    <!-- *********************************************************** -->
+    <!-- Create File if issue found                                  -->
+    <!-- *********************************************************** -->
+    <target name="createFile" if="existIssue">
+        <property name="csv.file"     value="${issue.dirname}/${issue.filename}.csv"/>
+        <concat destfile="${csv.file}">
+            <header filtering="no" trimleading="yes">${levelRequestIssues.names}${line.separator}</header>
+            <fileset dir="${issue.dirname}" includes="${issue.filename}_wrk.csv"/>
+        </concat>
+        <if> <isset property="create_list"/>
+            <then>
+                <file4xls file="${csv.file}" separator="${sql.field.separator}" title="true"
+                  xlsfile="${excel.file}" sheetname="${excel.sheet}" alternate="true"/>
+                <antcall target="createIssueList"/>
+            </then>
+        </if>
+        <if> <equals arg1="${levelRequestIssues.fileType}" arg2="xls"/>
+            <then> <echo message="The ${excel.file} file has been created."/> </then>
+        </if>
+        <if> <equals arg1="${levelRequestIssues.fileType}" arg2="csv"/>
+            <then> <echo message="The ${csv.file} file has been created."/> </then>
+            <else> <delete quiet="true" file="${csv.file}"/> </else>
+        </if>
+        <if> <equals arg1="${levelRequestIssues.fileType}" arg2="lst"/>
+            <then> <delete quiet="true" file="${excel.file}"/> </then>
+        </if>
+    </target>
+
+    <target name="createIssueList">
+        <property name="issueList" value=""/>
+        <loadfile srcfile="${csv.workFile}" property="issue_data"/>
+        <!-- Reading each line -->
+        <for list="${issue_data}" param="issue.line" delimiter="${line.separator}">
+            <sequential>
+                <var name="issue.fields" value=""/>
+                <for list="${levelRequestIssues.names}" param="Xcol" delimiter="${sql.field.separator}">
+                    <sequential>
+                        <var name="Xfield" value=""/>
+                        <propertyregex property="Xfield"  input="@{issue.line}${sql.field.separator}" override="true"
+                               regexp="^${issue.fields}([^${sql.field.separator}]+)${sql.field.separator}.*" select="\1"/>
+                        <var name="@{Xcol}" value="${Xfield}"/>
+                        <var name="issue.fields" value="${issue.fields}${Xfield}${sql.field.separator}"/>
+                    </sequential>
+                </for>
+                <var name="issueList" value="${issueList}${ISSUEID},"/>
+            </sequential>
+        </for>
+
+        <sortlist property="issue_List"  delimiter="," value="${issueList}"/>
+        <var name="oldissue"  value=""/>
+        <var name="issueList" value=""/>
+        <for list="${issue_List}" param="issue">
+            <sequential>
+                <if> <not> <equals arg1="${oldissue}" arg2="@{issue}"/> </not>
+                    <then> <var name="issueList" value="${issueList}@{issue},"/> </then>
+                </if>
+                <var name="oldissue" value="@{issue}"/>
+            </sequential>
+        </for>
+        <propertyregex property="issueList" override="true"
+                      input="${issueList}" casesensitive="false"
+                      regexp="(,)$" replace="${line.separator}"/>
+        <echo file="${propertyFileSource}" append="true" message="${line.separator}issues.list=${issueList}${line.separator}"/>
+        <echo message="${issueList}" file="${issue.file}"/>
+        <echo message="The 'issues.list' parameter is created with List of Issues:${issueList} in 'propertyFileSource' file."/>
+        <echo message="The ${issue.file} file has been created."/>
+    </target>
+</project>

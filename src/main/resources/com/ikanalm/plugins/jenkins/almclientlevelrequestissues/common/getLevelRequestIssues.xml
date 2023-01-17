@@ -1,0 +1,140 @@
+<project name="getLevelRequestIssues" default="getLevelRequestIssues" basedir=".">
+    <description>Get a LevelRequest Issues</description>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+    <target name="getLevelRequestIssues" depends="setLevelRequestIssuesProperties,resetLevelRequestIssuesVariables,getLevelRequestIssuesList,issuesXmlResult,issuesHtmlResult">
+        <fail message="ERROR: IKAN ALM Get LevelRequest Issues cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="lr_issues_ok"/> </not>
+                    <not> <isset property="lr_issues_no"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <antcall target="resetLevelRequestIssuesVariables"/>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Selecting LevelRequest access option               -->
+    <!-- ************************************************** -->
+    <target name="setLevelRequestIssuesProperties">
+        <condition property="levelrequest.oid" value="${levelRequestOid}">
+            <and>
+                <isset property="existLevelRequest"/>
+                <isset property="levelRequestOid"/>
+                <not> <equals arg1="${levelRequestOid}" arg2=""/> </not>
+                <not> <equals arg1="${levelRequestOid}" arg2="0"/> </not>
+            </and>
+        </condition>
+    </target>
+    <target name="resetLevelRequestIssuesVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting LevelRequest Issues from Oid               -->
+    <!-- ************************************************** -->
+    <target name="getLevelRequestIssuesList" if="levelrequest.oid">
+        <property name="get.almEntity"  value="${basedir}/temp/getLevelRequestIssues"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <property name="get.almUrl"     value="${alm.apiUrl}/levelrequests/${levelrequest.oid}/issues"/>
+        <property name="get.message"    value="Get Issues of LevelRequest=${levelrequest.oid}"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="404"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML/HTML response file Group        -->
+    <!-- ************************************************** -->
+    <target name="issuesXmlResult" if="xmlResponse">
+        <var name="xmlLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="//error/detail/text()"  property="almLog.detail"/>
+            <copy path="//issues/@count"  property="issues_count"/>
+            <copy path="//issues/issue/id/text()" property="issue_IDS_URN" append="true" propertySeparator=","/>
+            <copy path="//issues/issue/issue-id/text()" property="issue_IDS" append="true" propertySeparator=","/>
+        </xmltask>
+        <property name="issues_count" value="0"/>
+        <condition property="task.resultMessage" value="Message=No Issue for the LevelRequest=${levelrequest.oid}">
+            <equals arg1="${issues_count}" arg2="0"/>
+        </condition>
+        <condition property="lr_issues_ok" value="true">
+            <isgreaterthan arg1="${issues_count}" arg2="0"/>
+        </condition>
+        <condition property="lr_issues_no" value="true">
+            <equals arg1="${issues_count}" arg2="0"/>
+        </condition>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="issue_IDS"/> </not>
+        </condition>
+        <condition property="existIssue" value="true">
+            <isset property="issue_IDS"/>
+        </condition>
+        <property name="issue_IDS" value=""/>
+        <property name="issue_IDS_URN" value=""/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="almLog.detail2" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <property name="task.result"   value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Issue IDS=${issue_IDS}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="issuesHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+</project>

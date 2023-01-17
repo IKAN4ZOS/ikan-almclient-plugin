@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectstream>
+	<accept-forced-build>${cru.projectStream.acceptForcedBuild}</accept-forced-build>
+	<archived>${cru.projectStream.archived}</archived>
+	<buildprefix>${cru.projectStream.buildPrefix}</buildprefix>
+	<buildsuffix>${cru.projectStream.buildSuffix}</buildsuffix>
+	<!-- buildType: 0=fullBuild; 1=partialBuild; 2=productionBuild; 3=partialBuildTag -->
+	<buildtype>${cru.projectStream.buildType.index}</buildtype>
+	<description>${cru.projectStream.description}</description>
+	<highest-buildnumber>${cru.projectStream.highestBuildNumber}</highest-buildnumber>
+	<is-head>${cru.projectStream.head}</is-head>
+	<is-tagbased>${cru.projectStream.tagBased}</is-tagbased>
+	<lifecycle-oid>${cru.projectStream.lifecycleOid}</lifecycle-oid>
+	<locked>${cru.projectStream.locked}</locked>
+	<project-oid>${cru.projectStream.projectOid}</project-oid>
+        <!-- status: 0=underConstruction; 1=planning; 2=development; 3=testing; 4=stable; 5=generalAvailable; 6=frozen; 7=closed -->
+	<status>${cru.projectStream.status.index}</status>
+	<tag-template>${streamType}_${prefix}_${suffix}_b${buildNumber}</tag-template>
+	<vcr-branch-id>${cru.projectStream.vcrBranchId}</vcr-branch-id>
+</projectstream>

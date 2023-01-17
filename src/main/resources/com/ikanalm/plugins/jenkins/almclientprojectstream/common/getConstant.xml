@@ -1,0 +1,319 @@
+<project name="getConstant" default="getConstant" basedir=".">
+    <description>Get a Constant via Rest Api</description>
+    <!-- ************************************************** -->
+    <!-- Main target                                        -->
+    <!-- ************************************************** -->
+    <target name="getConstant"
+        depends="initConstantProperties,resetConstantVariables,getOneConstant,getConstants,constantXmlResult,constantHtmlResult,setConstantInfo">
+        <fail message="ERROR: IKAN ALM Get Constant cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="constant_ignore"/> </not>
+                    <not> <isset property="constant_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Main target Constant Value criteria                -->
+    <!-- ************************************************** -->
+    <target name="getConstantWithValue"
+        depends="initConstantProperties,resetConstantVariables,getConstantFromValue,getConstants,constantLinksXmlResult,constantHtmlResult">
+        <xmltask source="${xmlLog.file}">
+            <copy path="//${constant.type}/${constant.entity}/text[text()='${constant.value}']/../link/@href" property="constant.link"/>
+            <copy path="//${constant.type}/${constant.entity}/text[text()='${constant.value}']/../id/text()" property="constant_INDEX"/>
+            <!--copy path="//${constant.type}/${constant.entity}/text[text()='${constant.value}']/../text/text()" property="constant_VALUE"/-->
+        </xmltask>
+        <property name="constant_VALUE" value="${constant.value}"/>
+        <condition property="constant_found" value="true">
+            <isset property="constant.link"/>
+        </condition>
+        <fail message="ERROR: IKAN ALM Get Constant cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="constant_ignore"/> </not>
+                    <not> <isset property="constant_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <antfetch target="setConstantInfo" return="constant.index,constant.value"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Main target Constants List                         -->
+    <!-- ************************************************** -->
+    <target name="getConstantsList" depends="initConstantProperties,resetConstantVariables,getConstantLinks,getConstants,constantLinksXmlResult,constantHtmlResult">
+        <fail message="ERROR: IKAN ALM Get Constant cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="constants_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting Constant access option                   -->
+    <!-- ************************************************** -->
+    <target name="initConstantProperties">
+        <property name="constants.objects" value="approvals,builds,deploys,levelrequests,machines,packages,phases,projects,projectstreams,subversions"/>
+        <property name="constants.types" value="approvalstatuses,approvaltypes,archivestatuses,statuses,actiontypes,agentstatuses,operatingsystems,serverstatuses,formattypes,projecttypes,buildtypes,repository-layouts"/>
+        <fail message="ERROR: IKAN ALM Get Constants cannot be done correctly for object or type.">
+            <condition>
+                <or>
+                    <not> <isset property="constant.object"/> </not>
+                    <equals arg1="${constant.object}" arg2=""/>
+                    <not> <isset property="constant.type"/> </not>
+                    <equals arg1="${constant.type}" arg2=""/>
+                </or>
+            </condition>
+        </fail>
+
+        <propertyregex property="constant_object_found"
+              input=",${constants.objects}," casesensitive="true"
+              regexp=",(${constant.object})," select="\1"/>
+        <propertyregex property="constant_type_found"
+              input=",${constants.types}," casesensitive="true"
+              regexp=",(${constant.type})," select="\1"/>
+        <fail message="ERROR: IKAN ALM Get Constants cannot be done correctly for object or type.">
+            <condition>
+                <or>
+                    <not> <isset property="constant_object_found"/> </not>
+                    <not> <isset property="constant_type_found"/> </not>
+                </or>
+            </condition>
+        </fail>
+        <!-- Calculate constant.entity from constant.type without 'es' or 's') -->
+        <propertyregex property="constant.entity"
+              input="${constant.type}" casesensitive="true"
+              regexp="(.*)pes$" select="\1pe"/>
+        <propertyregex property="constant.entity"
+              input="${constant.type}" casesensitive="true"
+              regexp="(.*)es$" select="\1"/>
+        <propertyregex property="constant.entity"
+              input="${constant.type}" casesensitive="true"
+              regexp="(.*)s$" select="\1"/>
+        <fail message="ERROR: IKAN ALM Get Constants cannot be done correctly for object/type entity.">
+            <condition>
+                <not> <isset property="constant.entity"/> </not>
+            </condition>
+        </fail>
+	<property name="alm.stopOnError"      value="true"/>
+
+        <if> <equals arg1="${constant.value}" arg2="" casesensitive="false"/>
+            <then> 
+            <var name="constant.value" unset="true"/>
+            <property name="constant_ignore" value="true"/>
+            </then>
+        </if>
+        <if> <equals arg1="${constant.index}" arg2="0"/>
+            <then> <var name="constant.index" unset="true"/> </then>
+        </if>
+        <if> <equals arg1="${constant.link}" arg2=""/>
+            <then> <var name="constant.link" unset="true"/> </then>
+        </if>
+        <var name="constant_found" unset="true"/>
+<!--
+        <var name="constant.index" unset="true"/>
+        <var name="constant.link"  unset="true"/>
+        <var name="constant.value" unset="true"/>
+-->
+    </target>
+
+    <target name="resetConstantVariables">
+        <var name="get.sortcolumn" unset="true"/>
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Constant from index                        -->
+    <!-- ************************************************** -->
+    <target name="getConstantFromIndex" if="constant.index">
+        <property name="get.almUrl"     value="${alm.apiUrl}/constants/${constant.object}/${constant.type}/${constant.index}"/>
+        <property name="get.message"    value="Get Constant Index=${constant.index}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Constant from Link                         -->
+    <!-- ************************************************** -->
+    <target name="getConstantFromLink" if="constant.link">
+        <property name="get.almUrl"     value="${constant.link}"/>
+        <property name="get.message"    value="Get Constant Link=${constant.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Constant from Value                        -->
+    <!-- ************************************************** -->
+    <target name="getConstantFromValue" if="constant.value">
+        <property name="get.almUrl"     value="${alm.apiUrl}/constants/${constant.object}/${constant.type}"/>
+        <property name="get.message"    value="Get Constant /${constant.object}/${constant.type} Value '${constant.value}'"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Constant                                   -->
+    <!-- ************************************************** -->
+    <target name="getOneConstant" depends="getConstantFromIndex,getConstantFromLink"/>
+    <!-- ************************************************** -->
+    <!-- Getting Constants as a list of links               -->
+    <!-- ************************************************** -->
+    <target name="getConstantLinks">
+        <property name="get.almUrl"     value="${alm.apiUrl}/constants/${constant.object}/${constant.type}"/>
+        <property name="get.message"    value="Get Constants=${constant.object}/${constant.type}"/>
+        <property name="get.almEntity"  value="${basedir}/temp/getConstantLinks"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Constant(s)                                -->
+    <!-- ************************************************** -->
+    <target name="getConstants" if="get.almUrl">
+        <property name="get.almEntity"  value="${basedir}/temp/getConstant"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="404"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="constantXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <convertProperty outputproperty="constant.Entity" string="${constant.entity}" mode="First"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <!--copy path="//${constant.type}/@count"  property="constants_count"/-->
+            <copy path="//${constant.entity}/link[@title='${constant.Entity}']/@href" property="constant.link"/>
+            <copy path="//${constant.entity}/id/text()" property="constant_INDEX"/>
+            <copy path="//${constant.entity}/text/text()" property="constant_VALUE"/>
+        </xmltask>
+        <property name="constants_count" value="1"/> <!-- If get by Index or Link -->
+        <condition property="task.resultMessage" value="Message=No Constant found">
+            <equals arg1="${constants_count}" arg2="0"/>
+        </condition>
+        <condition property="task.resultMessage" value="Message=${almLog.result}">
+            <not> <isset property="constant_INDEX"/> </not>
+        </condition>
+        <condition property="constant_found" value="true">
+            <isset property="constant_INDEX"/>
+        </condition>
+        <property name="constant_INDEX"   value="0"/>
+        <property name="constant.index"   value="${constant_INDEX}"/>
+        <property name="constant.value"   value="${constant_VALUE}"/>
+        <!-- -->
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Constant=${constant.value}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${constants_count}" arg2="1"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="constantLinksXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="//${constant.type}/@count"  property="constants_count"/>
+            <copy path="//${constant.type}/${constant.entity}/link/@href" property="constants_links" append="true" propertySeparator=","/>
+            <copy path="//${constant.type}/${constant.entity}/text/text()" property="constants_values" append="true" propertySeparator=","/>
+        </xmltask>
+        <property name="constants_count" value="0"/>
+        <condition property="task.resultMessage" value="Message=No Constant found">
+            <equals arg1="${constants_count}" arg2="0"/>
+        </condition>
+        <condition property="task.resultMessage" value="Message=${almLog.result}">
+            <not> <isset property="constants_links"/> </not>
+        </condition>
+        <condition property="constants_found" value="true">
+            <isset property="constants_links"/>
+        </condition>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Constant Values=${constants_values}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <islessthan arg1="${constants_count}" arg2="1"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Project Stream Info                                -->
+    <!-- ************************************************** -->
+    <target name="setConstantInfo" if="constant_found">
+        <var name="constant.index"      value="${constant_INDEX}"/>
+        <var name="constant.value"      value="${constant_VALUE}"/>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="constantHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+</project>

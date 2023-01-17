@@ -1,0 +1,381 @@
+<project name="getProjectStream" default="getProjectStream" basedir=".">
+    <description>Get a ProjectStream via Rest Api</description>
+    <!-- ************************************************** -->
+    <!-- Main target                                        -->
+    <!-- ************************************************** -->
+    <target name="getProjectStream" depends="initProjectStreamProperties,resetProjectStreamVariables,getOneProjectStream,getProjectStreams,projectStreamXmlResult,projectStreamHtmlResult">
+        <fail message="ERROR: IKAN ALM Get ProjectStream cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="projectStream_ignore"/> </not>
+                    <not> <isset property="projectStream_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <antcall target="setProjectStreamInfo"/>
+        <echo file="${local.list}/${getProjectStream.properties}" append="true">
+#</echo>
+        <var file="${local.list}/${getProjectStream.properties}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Main target ProjectStreams List                    -->
+    <!-- ************************************************** -->
+    <target name="getProjectStreamsList" depends="initProjectStreamProperties,resetProjectStreamVariables,getProjectStreamLinks,getProjectStreams,projectStreamLinksXmlResult,projectStreamHtmlResult">
+        <fail message="ERROR: IKAN ALM Get ProjectStream cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="projectStreams_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting ProjectStream access option              -->
+    <!-- ************************************************** -->
+    <target name="initProjectStreamProperties">
+	<property name="alm.stopOnError"      value="true"/>
+        <condition property="projectStream_ignore" value="true">
+            <and>
+                <equals arg1="${projectStream.buildPrefix}" arg2="" casesensitive="false"/>
+                <equals arg1="${projectStream.oid}" arg2="0" casesensitive="false"/>
+            </and>
+        </condition>
+        <if> <isset property="projectStream_ignore"/>
+            <then> <echo message="projectStream_ignore=${projectStream_ignore}" level="info"/> </then>
+        </if>
+        <property name="projectStream.buildPrefix" value=""/>
+        <if> <equals arg1="${projectStream.buildPrefix}" arg2=""/>
+            <then> <var name="projectStream.buildPrefix" unset="true"/> </then>
+        </if>
+	<property name="projectStream.buildSuffix"    value=""/>
+        <var name="projectStream.buildSuffix.label" unset="true"/>
+        <condition property="projectStream.buildSuffix.label" value="" else="&amp;suffix=${projectStream.buildSuffix}">
+            <equals arg1="${projectStream.buildSuffix}" arg2=""/>
+        </condition>
+        <condition property="projectStream.ishead" value="true" else="false">
+            <equals arg1="${projectStream.buildSuffix}" arg2=""/>
+        </condition>
+        <if> <equals arg1="${projectStream.oid}" arg2="0"/>
+            <then> <var name="projectStream.oid" unset="true"/> </then>
+        </if>
+        <if> <equals arg1="${projectStream.link}" arg2=""/>
+            <then> <var name="projectStream.link" unset="true"/> </then>
+        </if>
+        <property name="getProjectStream.properties"   value="getProjectStream.properties"/>
+    </target>
+
+    <target name="resetProjectStreamVariables">
+        <var name="get.sortcolumn" unset="true"/>
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting ProjectStream from Oid                     -->
+    <!-- ************************************************** -->
+    <target name="getProjectStreamFromOid" if="projectStream.oid">
+        <property name="get.almUrl"     value="${alm.apiUrl}/projectstreams/${projectStream.oid}"/>
+        <property name="get.message"    value="Get ProjectStream Oid=${projectStream.oid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting ProjectStream from Link                    -->
+    <!-- ************************************************** -->
+    <target name="getProjectStreamFromLink" if="projectStream.link">
+        <property name="get.almUrl"     value="${projectStream.link}"/>
+        <property name="get.message"    value="Get ProjectStream Link=${projectStream.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting ProjectStream from Name                    -->
+    <!-- ************************************************** -->
+    <target name="getProjectStreamFromStream" if="projectStream.buildPrefix">
+        <property name="get.almUrl"     value="${alm.apiUrl}/projectstreams?projectname=${project.name}&amp;prefix=${projectStream.buildPrefix}${projectStream.buildSuffix.label}&amp;ishead=${projectStream.ishead}&amp;view=all&amp;page=1&amp;pagesize=10&amp;sortdirection=asc"/>
+        <property name="get.message"    value="Get ProjectStream Name=${projectStream.buildPrefix}-${projectStream.buildSuffix}"/>
+        <echo message="projectStream.buildSuffix.label=${projectStream.buildSuffix.label}" level="info"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting ProjectStream                              -->
+    <!-- ************************************************** -->
+    <target name="getOneProjectStream" depends="getProjectStreamFromOid,getProjectStreamFromLink,getProjectStreamFromStream"/>
+    <!-- ************************************************** -->
+    <!-- Getting ProjectStreams as a list of links          -->
+    <!-- ************************************************** -->
+    <target name="getProjectStreamLinks">
+        <property name="get.sortcolumn" value=""/>
+        <condition property="sortcolumns" value="&amp;sortcolumn=${get.sortcolumn}" else="">
+            <not> <equals arg1="${get.sortcolumn}" arg2=""/> </not>
+        </condition>
+	<property name="projectStream.buildPrefix"    value=""/>
+	<property name="projectStream.buildSuffix"    value=""/>
+        <var name="projectStream.buildSuffix.label" unset="true"/>
+        <condition property="projectStream.buildSuffix.label" value="" else="&amp;suffix=${projectStream.buildSuffix}">
+            <equals arg1="${projectStream.buildSuffix}" arg2=""/>
+        </condition>
+        <var name="projectStreams" unset="true"/>
+        <condition property="projectStreams" value="${projectStream.buildPrefix}" else="${projectStream.buildPrefix}-${projectStream.buildSuffix}">
+           <equals arg1="${projectStream.buildSuffix}" arg2=""/>
+        </condition>
+        <property name="get.almUrl"     value="${alm.apiUrl}/projectstreams?projectname=${project.name}&amp;prefix=${projectStream.buildPrefix}${projectStream.buildSuffix.label}&amp;view=links${sortcolumns}&amp;page=1&amp;pagesize=10000&amp;sortdirection=asc"/>
+        <property name="get.message"    value="Get ProjectStreams=${project.name} ${projectStreams}"/>
+        <property name="get.almEntity"  value="${basedir}/temp/getProjectStreamLinks"/>
+        <var name="sortcolumns" unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting ProjectStream(s)                           -->
+    <!-- ************************************************** -->
+    <target name="getProjectStreams" if="get.almUrl">
+        <property name="get.almEntity"  value="${basedir}/temp/getProjectStream"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="404"/>
+        </condition>
+    </target>
+        <!-- ************************************************** -->
+        <!-- Cleaning the response properties                   -->
+        <!-- ************************************************** -->
+        <target name="resetProjectStreamGetProperties">
+            <var name="projectStream_URN" unset="true"/>
+            <var name="projectStream_OID" unset="true"/>
+            <var name="projectStream_BUILDPREFIX" unset="true"/>
+            <var name="projectStream_BUILDSUFFIX" unset="true"/>
+            <var name="projectStream_FORCED" unset="true"/>
+            <var name="projectStream_ARCHIVED" unset="true"/>
+            <var name="projectStream_BUILDTYPE" unset="true"/>
+            <var name="projectStream_BUILDTYPE_TEXT" unset="true"/>
+            <var name="projectStream_DESCRIPTION" unset="true"/>
+            <var name="projectStream_HIGHESTBUILDNUMBER" unset="true"/>
+            <var name="projectStream_ISHEAD" unset="true"/>
+            <var name="projectStream_TAGBASED" unset="true"/>
+            <var name="projectStream_LIFECYCLE" unset="true"/>
+            <var name="lifecycle_NAME" unset="true"/>
+            <var name="projectStream_LOCKED" unset="true"/>
+            <var name="projectStream_PROJECT" unset="true"/>
+            <var name="project_NAME" unset="true"/>
+            <var name="projectStream_PROJECTTYPE" unset="true"/>
+            <var name="projectStream_PROJECTTYPE_TEXT" unset="true"/>
+            <var name="projectStream_STATUS" unset="true"/>
+            <var name="projectStream_STATUS_TEXT" unset="true"/>
+            <var name="projectStream_TAGTEMPLATE" unset="true"/>
+            <var name="projectStream_VCRBRANCHID" unset="true"/>
+            <var name="projectStream_found" unset="true"/>
+            <var name="projectstreams_count" unset="true"/>
+        </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="projectStreamXmlResult" if="xmlResponse" depends="resetProjectStreamGetProperties">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="/projectstreams/@count"  property="projectstreams_count"/>
+            <copy path="//projectstream/project/link/@href" property="project.link"/>
+            <copy path="//projectstream/link/@href" property="projectStream.link"/>
+            <copy path="//projectstream/accept-forced-build/text()" property="projectStream_FORCED"/>
+            <copy path="//projectstream/id/text()" property="projectStream_URN"/>
+            <copy path="//projectstream/buildprefix/text()" property="projectStream_BUILDPREFIX"/>
+            <copy path="//projectstream/buildsuffix/text()" property="projectStream_BUILDSUFFIX"/>
+            <copy path="//projectstream/buildtype/id/text()" property="projectStream_BUILDTYPE"/>
+            <copy path="//projectstream/buildtype/text/text()" property="projectStream_BUILDTYPE_TEXT"/>
+            <copy path="//projectstream/description/text()" property="projectStream_DESCRIPTION"/>
+            <copy path="//projectstream/highest-buildnumber/text()" property="projectStream_HIGHESTBUILDNUMBER"/>
+            <copy path="//projectstream/is-head/text()" property="projectStream_ISHEAD"/>
+            <copy path="//projectstream/is-tagbased/text()" property="projectStream_TAGBASED"/>
+            <copy path="//projectstream/lifecycle/id/text()" property="projectStream_LIFECYCLE"/>
+            <copy path="//projectstream/lifecycle-name/text()" property="lifecycle_NAME"/>
+            <copy path="//projectstream/locked/text()" property="projectStream_LOCKED"/>
+            <copy path="//projectstream/project/id/text()" property="projectStream_PROJECT"/>
+            <copy path="//projectstream/projecttype/id/text()" property="projectStream_PROJECTTYPE"/>
+            <copy path="//projectstream/projecttype/text/text()" property="projectStream_PROJECTTYPE_TEXT"/>
+            <copy path="//projectstream/project-name/text()" property="project_NAME"/>
+            <copy path="//projectstream/status/id/text()" property="projectStream_STATUS"/>
+            <copy path="//projectstream/status/text/text()" property="projectStream_STATUS_TEXT"/>
+            <copy path="//projectstream/tag-template/text()" property="projectStream_TAGTEMPLATE"/>
+            <copy path="//projectstream/vcr-branch-id/text()" property="projectStream_VCRBRANCHID"/>
+        </xmltask>
+        <property name="projectstreams_count" value="1"/> <!-- If get by Oid or Link -->
+        <condition property="task.resultMessage" value="Message=No ProjectStream for the project">
+            <and>
+            <equals arg1="${projectstreams_count}" arg2="0"/>
+            <not> <isset property="almLog.result"/> </not>
+            </and>
+        </condition>
+        <if> <isset property="projectStream_URN"/>
+            <then>
+                <propertyregex property="projectStream_OID"
+                      input="${projectStream_URN}" casesensitive="false"
+                      regexp="urn\:alm\:projectstream\:([0-9]+)\:.*" select="\1"/>
+            </then>
+        </if>
+        <property name="almLog.result" value="Not found"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="projectStream_OID"/> </not>
+        </condition>
+        <condition property="projectStream_found" value="true">
+            <isset property="projectStream_OID"/>
+        </condition>
+        <property name="projectStream_OID"     value="0"/>
+        <property name="projectStream.oid"     value="${projectStream_OID}"/>
+        <!-- Optional fields -->
+        <property name="projectStream_BUILDPREFIX" value=""/>
+        <property name="projectStream_BUILDSUFFIX" value=""/>
+        <property name="projectStream_VCRBRANCHID" value=""/>
+        <!--var name="projectStream" unset="true"/-->
+        <condition property="projectStream" value="${projectStream_BUILDPREFIX}" else="${projectStream_BUILDPREFIX}-${projectStream_BUILDSUFFIX}">
+           <or>
+           <istrue value="${projectStream_ISHEAD}"/>
+           <equals arg1="${projectStream_ISHEAD}" arg2="1"/>
+           </or>
+        </condition>
+        <!-- -->
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="ProjectStream=${project_NAME} ${projectStream}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${projectstreams_count}" arg2="1"/> </not>
+                <not> <isset property="projectStream_ignore"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="projectStreamLinksXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="//projectstreams/@count"  property="projectstreams_count"/>
+            <copy path="//projectstreams/link[@title='Projectstream']/@href" property="projectStreams_links" append="true" propertySeparator=","/>
+        </xmltask>
+        <property name="projectstreams_count" value="0"/>
+        <condition property="task.resultMessage" value="Message=No ProjectStream for the project">
+            <equals arg1="${projectstreams_count}" arg2="0"/>
+        </condition>
+        <condition property="task.resultMessage" value="Message=${almLog.result}">
+            <not> <isset property="projectStreams_links"/> </not>
+        </condition>
+        <condition property="projectStreams_found" value="true">
+            <isset property="projectStreams_links"/>
+        </condition>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="ProjectStream=${project.name} ${projectStreams}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <islessthan arg1="${projectstreams_count}" arg2="1"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Project Stream Info                                -->
+    <!-- ************************************************** -->
+    <target name="setProjectStreamInfo" if="projectStream_found" unless="projectStream_ignore">
+        <var name="project.oid"          value="${projectStream_PROJECT}"/>
+        <var name="project.name"         value="${project_NAME}"/>
+        <var name="projectStream.buildPrefix" value="${projectStream_BUILDPREFIX}"/>
+        <var name="projectStream.buildSuffix" value="${projectStream_BUILDSUFFIX}"/>
+        <var name="projectStream.vcrbranchid" value="${projectStream_VCRBRANCHID}"/>
+        <var name="projectStream.lifecycle"   value="${lifecycle_NAME}"/>
+        <var name="projectStream.type" unset="true"/>
+        <condition property="projectStream.type" value="H" else="B">
+           <or>
+           <istrue value="${projectStream_ISHEAD}"/>
+           <equals arg1="${projectStream_ISHEAD}" arg2="1"/>
+           </or>
+        </condition>
+        <!-- ALM Branch Key -->
+        <condition property="projectStream" value="${projectStream_BUILDPREFIX}" else="${projectStream_BUILDPREFIX}-${projectStream_BUILDSUFFIX}">
+           <equals arg1="${projectStream.type}" arg2="H"/>
+        </condition>
+        <property name="projectStream.name" value="${projectStream.type}_${projectStream}"/>
+
+        <echoproperties destfile="${local.list}/${getProjectStream.properties}">
+          <propertyset>
+            <propertyref prefix="project."/>
+            <propertyref prefix="projectStream."/>
+          </propertyset>
+        </echoproperties>
+        <echo file="${local.list}/${getProjectStream.properties}" append="true">
+projectStream=${projectStream}
+</echo>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="projectStreamHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+</project>

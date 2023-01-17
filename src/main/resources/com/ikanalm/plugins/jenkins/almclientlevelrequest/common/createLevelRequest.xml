@@ -1,0 +1,250 @@
+<project name="createLevelRequest" default="createLevelRequest" basedir=".">
+    <description>Create a LevelRequest with Project, Stream, Level and Package (if there is)</description>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+
+	<target name="createLevelRequest" depends="resetCreateLevelRequestVariables,postCreateLevelRequest,createLevelRequestXmlResult,createLevelRequestHtmlResult">
+        <fail message="ERROR: IKAN ALM Create Level Request cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="lr_created"/> </not>
+                    <not> <isset property="lr_notcreated"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <antcall target="resetCreateLevelRequestVariables"/>
+	</target>
+
+        <target name="resetCreateLevelRequestVariables">
+            <var name="post.almBody"   unset="true"/>
+            <var name="post.almEntity" unset="true"/>
+            <var name="post.almLogfile" unset="true"/>
+            <var name="post.almUrl"    unset="true"/>
+            <var name="post.message"   unset="true"/>
+            <var name="task.status"    unset="true"/>
+            <var name="task.message"   unset="true"/>
+            <var name="task.result"    unset="true"/>
+            <var name="task.resultMessage"   unset="true"/>
+            <var name="xmlLog.file"    unset="true"/>
+            <var name="xmlResult.log"  unset="true"/>
+            <var name="xmlResponse"    unset="true"/>
+        </target>
+
+	<!-- Create an IKAN ALM LevelRequest using the RESTful API -->
+        <target name="createLevelRequestBody">
+                <property name="clr.project.name"  value="${alm.project.name}"/>
+                <condition property="alm.projectStream" value="${alm.projectStream.buildPrefix}"
+                                                    else="${alm.projectStream.buildPrefix}-${alm.projectStream.buildSuffix}">
+                   <or>
+                   <not> <isset property="alm.projectStream.buildSuffix"/> </not>
+                   <equals arg1="${alm.projectStream.buildSuffix}" arg2=""/>
+                   </or>
+		</condition>
+
+	        <property name="clr.projectStream" value="${alm.projectStream}"/>
+                <condition property="clr.projectstream.line" value=""
+                    else="&lt;projectstream&gt;${clr.projectStream}&lt;/projectstream&gt;${line.separator}">
+                    <equals arg1="${clr.projectStream}" arg2=""/>
+                </condition>
+	        <property name="clr.level.name"    value="${alm.levelRequest.levelName}"/>
+	        <property name="clr.description"   value="${alm.description}"/>
+	        <property name="clr.package.name"  value="${alm.package.name}"/>
+                <condition property="clr.package.line" value=""
+                    else="&lt;package&gt;${clr.package.name}&lt;/package&gt;${line.separator}">
+                    <equals arg1="${clr.package.name}" arg2=""/>
+                </condition>
+	        <property name="clr.buildNumber"   value="${alm.buildNumber}"/>
+                <condition property="clr.build-number.line" value=""
+                    else="&lt;build-number&gt;${clr.buildNumber}&lt;/build-number&gt;${line.separator}">
+                    <equals arg1="${clr.buildNumber}" arg2=""/>
+                </condition>
+                <property name="clr.vcrTag"        value="${alm.vcrTag}"/>
+                <condition property="clr.tag.line" value=""
+                    else="&lt;tag&gt;${clr.vcrTag}&lt;/tag&gt;${line.separator}">
+                    <equals arg1="${clr.vcrTag}" arg2=""/>
+                </condition>
+        	<property name="clr.redeliver"     value="${alm.redeliver}"/>
+                <condition property="clr.redeliver.line" 
+                    value="&lt;redeliver&gt;${clr.redeliver}&lt;/redeliver&gt;${line.separator}" else="">
+                    <istrue value="${clr.redeliver}"/>
+                </condition>
+                <echo message="redeliver=${clr.redeliver}" level="info"/>
+
+        	<property name="clr.startDate"     value="${alm.startDate}"/>
+                <if> <not> <equals arg1="${clr.startDate}" arg2=""/> </not>
+                    <then> <antcall target="controlStartDate"/> </then>
+                </if>
+
+                <condition property="clr.start-date.line" value=""
+                    else="&lt;start-date&gt;${clr.startDate}&lt;/start-date&gt;${line.separator}">
+                    <equals arg1="${clr.startDate}" arg2=""/>
+                </condition>
+        	<property name="clr.deploysToExecute" value="${alm.deploysToExecute}"/>
+                <condition property="clr.deploysToExecute.line" value=""
+                    else="&lt;deploys-to-execute&gt;${clr.deploysToExecute}&lt;/deploys-to-execute&gt;${line.separator}">
+                    <equals arg1="${clr.deploysToExecute}" arg2=""/>
+                </condition>
+                <property name="clr.environmentParameters"    value="${alm.environmentParameters}"/>
+
+                <!-- Generate Post body file -->
+                <condition property="baseNumber" value="${clr.project.name}_${clr.projectStream}_${clr.package.name}${clr.level.name}" else="${clr.buildNumber}">
+                    <equals arg1="${clr.buildNumber}" arg2=""/>
+                </condition>
+                <mkdir dir="${basedir}/temp"/>
+                <property name="post.almEntity"  value="${basedir}/temp/createLevelRequest-${baseNumber}"/>
+                <property name="post.almBody"    value="${post.almEntity}.xml"/>
+                <copy file="${dir.almModels}/alm_clr_header_xml.model"
+                    tofile="${post.almBody}" overwrite="true">
+                    <filterchain> <expandproperties/> </filterchain>
+                </copy>
+                <echo file="${post.almBody}" message="${clr.projectstream.line}${clr.package.line}${clr.build-number.line}${clr.tag.line}${clr.redeliver.line}${clr.start-date.line}" append="true"/>
+                <echo file="${post.almBody}" message="${clr.deploysToExecute.line}${clr.environmentParameters}&lt;/clr&gt;" append="true"/>
+	</target>
+        <!-- ************************************************** -->
+        <!-- Posting LevelRequest                               -->
+        <!-- ************************************************** -->
+        <target name="postCreateLevelRequest" depends="createLevelRequestBody">
+            <property name="post.almUrl"     value="${alm.apiUrl}/createlevelrequest"/>
+            <property name="post.message"    value="Create LevelRequest"/>
+            <!--property name="post.almEntity"  value="${basedir}/temp/createLevelRequest"/-->
+            <!--property name="post.almBody"    value="${post.almEntity}.xml"/-->
+            <property name="post.almLogfile" value="${post.almEntity}_log.xml"/>
+            <var name="post.status"    unset="true"/>
+            <http url="${post.almUrl}"
+                method="POST" expected="201" failonunexpected="false" statusProperty="post.status"
+                printrequest="false" printresponse="false"
+                printrequestheaders="false" printresponseheaders="false"
+                outfile="${post.almLogfile}">
+                <entity file="${post.almBody}"/>
+                <headers>
+                    <header name="Accept" value="application/xml"/>
+                    <header name="Content-Type" value="application/xml"/>
+                    <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+                </headers>
+            </http>
+            <property name="task.status"   value="${post.status}"/>
+            <property name="task.message"  value="${post.message}"/>
+            <property name="xmlLog.file"   value="${post.almLogfile}"/>
+            <condition property="xmlResponse" value="true">
+                <islessthan arg1="${task.status}" arg2="404"/>
+            </condition>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the XML response file                   -->
+        <!-- ************************************************** -->
+        <target name="createLevelRequestXmlResult" if="xmlResponse">
+            <var name="almLog.result" unset="true"/>
+            <xmltask source="${xmlLog.file}">
+                <copy path="/error/message/text()"  property="almLog.result"/>
+                <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+                <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+                <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+                <copy path="/clr/id/text()" property="LR_OID_URN"/>
+                <copy path="/clr/tag/text()"   property="LR_VCRTAG"/>
+                <copy path="/clr/projectstream/id/text()"   property="LR_PROJECTSTREAM"/>
+                <copy path="/clr/level-id/text()"   property="LR_LEVEL"/>
+                <copy path="/clr/buildnumber/text()"   property="LR_BUILD_NUMBER"/>
+                <copy path="/clr/requested-datetime/text()"   property="LR_REQUESTED-DATETIME"/>
+            </xmltask>
+            <if> <isset property="LR_OID_URN"/>
+                <then>
+                    <propertyregex property="LR_OID"
+                          input="${LR_OID_URN}" casesensitive="false"
+                          regexp="urn\:alm\:levelrequest\:([0-9]+)\:.*" select="\1"/>
+                </then>
+            </if>
+            <property name="almLog.result" value="Client Error"/>
+            <property name="almLog.detail" value=""/>
+            <property name="almLog.detail2" value=""/>
+            <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+                <not> <isset property="LR_OID"/> </not>
+            </condition>
+            <condition property="lr_created" value="true">
+                <isset property="LR_OID"/>
+            </condition>
+            <condition property="lr_notcreated" value="true">
+                <equals arg1="${task.status}" arg2="400"/>
+            </condition>
+            <property name="LR_OID"     value="0"/>
+            <property name="LR_BUILD_NUMBER"     value="0"/>
+            <property name="task.result" value="${almLog.result}"/>
+            <property name="task.resultMessage" value="Level Request Oid=${LR_OID} with Build Number=${LR_BUILD_NUMBER}"/>
+    
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+                <condition>
+                    <and>
+                    <istrue value="${alm.stopOnError}"/>
+                    <not> <equals arg1="${task.status}" arg2="201"/> </not> <!-- LevelRequest is created -->
+                    <not> <equals arg1="${task.status}" arg2="400"/> </not> <!-- LevelRequest cannot created -->
+                    </and>
+                </condition>
+            </fail>
+            <property name="levelrequest.oid"     value="${LR_OID}"/>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the HTML response file                  -->
+        <!-- ************************************************** -->
+        <target name="createLevelRequestHtmlResult" unless="xmlResponse">
+            <var name="almLog.result" unset="true"/>
+            <property name="almLog.result" value="Client Error"/>
+            <property name="task.resultMessage" value="Message=${almLog.result}"/>
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+                <condition>
+                    <istrue value="${alm.stopOnError}"/>
+                </condition>
+            </fail>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Verifying at the clr.startDate value               -->
+        <!-- ************************************************** -->
+        <target name="controlStartDate">
+            <propertyregex property="thedate"
+                  input="${alm.startDate}" casesensitive="false"
+                  regexp="(.*)T.*" select="\1"/>
+            <propertyregex property="validdate"
+                  input="${thedate}" casesensitive="false"
+                  regexp="^((?:19|20)[0-9][0-9])-(0?[1-9]|1[012])-(0?[1-9]|[12][0-9]|3[01])$" replace="true"/>
+            <propertyregex property="thetime"
+                  input="${alm.startDate}" casesensitive="false"
+                  regexp=".*T(.*)" select="\1"/>
+            <propertyregex property="validtime"
+                  input="${thetime}" casesensitive="false"
+                  regexp="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$" replace="true"/>
+<!--echo message="thedate=${thedate} thetime=${thetime} validdate=${validdate} validtime=${validtime}"/-->
+            <fail message="ERROR: IKAN ALM Create Level Request alm.startDate is invalid! (format yyyy-MM-ddTHH:mm:ss)">
+                <condition>
+                    <or>
+                        <not> <isset property="validdate"/> </not>
+                        <not> <isset property="validtime"/> </not>
+                    </or>
+                </condition>
+            </fail>
+            <propertyregex property="thedatetime"
+                  input="${alm.startDate}" casesensitive="false"
+                  regexp="^([0-9]+)-([0-9]+)-([0-9]+)T([0-9]+)\:([0-9]+)\:.*$" select="\1\2\3\4\5"/>
+            <tstamp>
+                <format property="next.startDate" pattern="yyyy-MM-dd HH:mm"
+                        offset="1" unit="minute"/>
+            </tstamp>
+            <propertyregex property="nextdatetime"
+                  input="${next.startDate}" casesensitive="false"
+                  regexp="^([0-9]+)-([0-9]+)-([0-9]+)\s([0-9]+)\:([0-9]+)$" select="\1\2\3\4\5"/>
+<!--echo message="thedatetime=${thedatetime} ${next.startDate} nextdatetime=${nextdatetime}"/-->
+            <fail message="ERROR: IKAN ALM Create Level Request alm.startDate is before now!">
+                <condition>
+                        <islessthan arg1="${thedatetime}" arg2="${nextdatetime}"/>
+                </condition>
+            </fail>
+        </target>
+
+</project>

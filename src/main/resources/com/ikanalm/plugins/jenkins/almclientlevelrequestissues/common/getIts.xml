@@ -1,0 +1,405 @@
+<project name="getIts" default="getIts" basedir=".">
+    <description>Get an ITS via Rest Api</description>
+
+    <!-- ************************************************** -->
+    <!-- Main target                                        -->
+    <!-- ************************************************** -->
+    <target name="getIts" depends="initItsProperties,resetItsVariables,getOneIts,itsXmlResult,itsHtmlResult,setItsUserPwd">
+        <fail message="ERROR: IKAN ALM Get ITS cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="its_name_ignore"/> </not>
+                    <not> <isset property="its_found"/> </not>
+                    <not> <isset property="its_notfound"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <if> <istrue value="${setItsInfo}"/>
+            <then> <antcall target="setItsInfo"/> </then>
+        </if>
+        <echo file="${local.list}/${getITS.properties}" append="true">
+#</echo>
+        <var file="${local.list}/${getITS.properties}"/>
+        <fail message="ITS of ${project.name} with itsproperty.name=${itsproperty.name} not available!">
+            <condition>
+                <not> <isset property="its.name"/> </not>
+            </condition>
+        </fail>
+        <echo message="ITS: ${its.name} linked to project: ${project.name}."/>
+        <antcall target="resetItsVariables"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting Its access option                        -->
+    <!-- ************************************************** -->
+    <target name="initItsProperties">
+	<property name="alm.stopOnError"      value="true"/>
+        <if> <equals arg1="${its.name}" arg2="None" casesensitive="false"/>
+            <then> 
+            <var name="its.name" unset="true"/>
+            <property name="its_name_ignore" value="true"/>
+            </then>
+        </if>
+        <if> <equals arg1="${its.oid}" arg2="0"/>
+            <then> <var name="its.oid" unset="true"/> </then>
+        </if>
+        <if> <equals arg1="${its.link}" arg2=""/>
+            <then> <var name="its.link" unset="true"/> </then>
+        </if>
+        <var name="readETag"  unset="true"/>
+        <condition property="readETag" value="true">
+            <or>
+                <isset property="its.oid"/>
+                <isset property="its.link"/>
+            </or>
+        </condition>
+        <property name="itsproperty.name"     value=""/>
+        <if> <equals arg1="${itsproperty.name}" arg2=""/>
+            <then> <var name="itsproperty.name" unset="true"/> </then>
+        </if>
+        <property name="getITS.properties"   value="getITS.properties"/>
+    </target>
+    <target name="resetItsVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Its from Oid                               -->
+    <!-- ************************************************** -->
+    <target name="getItsFromOid" if="its.oid">
+        <property name="get.almUrl"     value="${alm.apiUrl}/issuetrackingsystems/${its.oid}"/>
+        <property name="get.message"    value="Get Its Oid=${its.oid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Its from Name                              -->
+    <!-- ************************************************** -->
+    <target name="getItsFromLink" if="its.link">
+        <property name="get.almUrl"     value="${its.link}"/>
+        <property name="get.message"    value="Get Its Link=${its.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Its from Name                              -->
+    <!-- ************************************************** -->
+    <target name="getItsFromName" if="its.name">
+        <property name="get.almUrl"     value="${alm.apiUrl}/issuetrackingsystems?name=${its.name}&amp;page=1&amp;pagesize=10&amp;sortdirection=asc"/>
+        <property name="get.message"    value="Get Its Name=${its.name}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Its                                        -->
+    <!-- ************************************************** -->
+    <target name="getOneIts" if="get.almUrl" depends="getItsFromOid,getItsFromLink,getItsFromName">
+        <property name="get.almEntity"  value="${basedir}/temp/getIts"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <property name="get.headers"    value="${get.almEntity}_headers.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}" outheadersfile="${get.headers}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="404"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="itsXmlResult" if="xmlResponse">
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="//issuetrackingsystems/@count"  property="its_count"/>
+            <copy path="//issuetrackingsystem/id/text()" property="its_URN"/>
+            <copy path="//issuetrackingsystem/name/text()" property="its_NAME"/>
+            <copy path="//issuetrackingsystem/description/text()" property="its_DESCRIPTION"/>
+            <copy path="//issuetrackingsystem/issue-pattern/text()" property="its_ISSUE_PATTERN"/>
+            <copy path="//issuetrackingsystem/issue-id-pattern/text()" property="its_ISSUEID_PATTERN"/>
+            <copy path="//issuetrackingsystem/url/text()" property="its_URL"/>
+            <copy path="//issuetrackingsystem/user/text()" property="its_USERID"/>
+            <copy path="//issuetrackingsystem/password/text()" property="its_PASSWORD"/>
+            <copy path="//issuetrackingsystem/add-comments/text()" property="its_ADDCOMMENTS"/>
+        </xmltask>
+        <if> <equals arg1="${task.status}" arg2="200"/>
+            <then> 
+                <property name="its_count"  value="1"/>
+                <antfetch target="itsETag" return="itsETag.text"/>
+            </then>
+        </if>
+        <property name="its_count"  value="0"/>
+        <condition property="task.resultMessage" value="Message=No ITS found">
+            <equals arg1="${its_count}" arg2="0"/>
+        </condition>
+        <if> <isset property="its_URN"/>
+            <then>
+                <propertyregex property="its_OID"
+                      input="${its_URN}" casesensitive="false"
+                      regexp="urn\:alm\:issuetrackingsystem\:([0-9]+)\:.*" select="\1"/>
+            </then>
+        </if>
+        <property name="almLog.result" value="Client Error"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="its_OID"/> </not>
+        </condition>
+        <condition property="its_found" value="true">
+            <isset property="its_OID"/>
+        </condition>
+        <condition property="its_notfound" value="true">
+            <equals arg1="${task.status}" arg2="400"/>
+        </condition>
+        <condition property="its.name" value="${its_NAME}">
+            <isset property="its_NAME"/>
+        </condition>
+        <property name="its_OID"     value="0"/>
+        <property name="its.oid"     value="${its_OID}"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="ITS=${its_NAME}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+        <!-- Default properties is not provided -->
+        <property name="its_DESCRIPTION"  value=""/>
+        <property name="its_USERID"       value=""/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Its Property from Oid and property name    -->
+    <!-- ************************************************** -->
+    <target name="getItsProperty" if="itsproperty.name" depends="resetItsVariables">
+        <property name="get.almEntity"  value="${basedir}/temp/getItsProperties"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <property name="get.almUrl"     value="${alm.apiUrl}/issuetrackingsystems"/>
+        <property name="get.message"    value="Get Its Oid=${its.oid} Properties"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}/${its.oid}/issuetrackingsystemproperties"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="400"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="itsPropertyXmlResult" if="xmlResponse">
+        <var name="xmlLog.result" unset="true"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="//issuetrackingsystemproperties/@count"  property="itsproperties_count"/>
+            <copy path="//issuetrackingsystemproperty/name[text()='${itsproperty.name}']/../name/text()" property="itsproperty_NAME"/>
+            <copy path="//issuetrackingsystemproperty/name[text()='${itsproperty.name}']/../value/text()" property="itsproperty_VALUE"/>
+        </xmltask>
+        <if> <equals arg1="${task.status}" arg2="200"/>
+            <then> 
+                <property name="itsproperties_count"  value="1"/>
+            </then>
+        </if>
+        <property name="itsproperties_count"  value="0"/>
+        <condition property="task.resultMessage" value="Message=No ITS Property found">
+            <equals arg1="${itsproperties_count}" arg2="0"/>
+        </condition>
+        <if> <not> <isset property="itsproperty_NAME"/> </not>
+            <then>
+            <property name="task.resultMessage" value="Message=${almLog.result}"/>
+            </then>
+        </if>
+        <property name="itsproperty_NAME"     value="${itsproperty.name}"/>
+        <property name="itsproperty_VALUE"    value=""/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="ITS property=${itsproperty_NAME} value=${itsproperty_VALUE}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage} ${almLog.detail} ${almLog.detail2}"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="itsHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Searching at the Etag response header parameter    -->
+    <!-- ************************************************** -->
+    <target name="itsETag" if="readETag">
+        <var name="alm_headers"  unset="true"/>
+        <loadfile property="alm_headers" srcfile="${get.headers}"/>
+        <var name="almETag.text" unset="true"/>
+        <propertyregex property="itsETag.text"
+              input="${alm_headers}" casesensitive="false"
+              regexp="ETag\:\ (\&quot;[\w]+\&quot;)" select="\1"/>
+        <fail message="ERROR: ETag response header parameter is not found!">
+            <condition>
+                <and>
+                    <not> <isset property="itsETag.text"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Project ITS Info                                   -->
+    <!-- ************************************************** -->
+    <target name="setItsInfo" depends="getItsProperty,itsPropertyXmlResult,itsHtmlResult">
+        <property name="itsproperty_NAME"     value=""/>
+        <property name="itsproperty_VALUE"    value=""/>
+        <condition property="${itsproperty_NAME}" value="${itsproperty_VALUE}">
+            <not> <equals arg1="${itsproperty_NAME}" arg2=""/> </not>
+        </condition>
+        <property name="its.name"        value="${its_NAME}"/>
+        <property name="its.url"         value="${its_URL}"/>
+        <property name="its.description" value="${its_DESCRIPTION}"/>
+        <condition property="its.addcomments" value="true" else="false">
+            <or>
+               <istrue value="${its_ADDCOMMENTS}"/>
+               <equals arg1="${its_ADDCOMMENTS}" arg2="1"/>
+            </or>
+        </condition>
+        <property name="itsproperty.name"  value=""/>
+        <property name="itsproperty.value" value="${itsproperty_VALUE}"/>
+        <delete quiet="true">
+            <fileset dir="${local.list}" includes="${ref.script.csv}"/>
+        </delete>
+        <echoproperties destfile="${local.list}/${getITS.properties}">
+          <propertyset>
+            <propertyref prefix="its."/>
+            <propertyref prefix="itsproperty."/>
+          </propertyset>
+        </echoproperties>
+    </target>
+    <!-- ************************************************************************* -->
+    <!-- ********** Set IKANALM User/Password if possible               ********** -->
+    <!-- ************************************************************************* -->
+    <target name="setIkanalmItsPwd">
+        <property name="its.user"       value="${its_USERID}"/>
+        <!-- ITS password ALM connection if exist -->
+        <var name="userpwd"  unset="true"/>
+        <var name="isIkanalmItsPwd"  unset="true"/>
+        <condition property="userpwd" value="${its_PASSWORD}">
+            <and>
+            <equals arg1="${its.user}" arg2="${its_USERID}"/>
+            <not> <equals arg1="${its.user}" arg2=""/> </not>
+            <isset property="its_PASSWORD"/>
+            <not> <equals arg1="${its_PASSWORD}" arg2=""/> </not>
+            <not> <equals arg1="${its_PASSWORD}" arg2="********"/> </not>
+            </and>
+        </condition>
+        <if> <equals arg1="${its.user}" arg2=""/>
+          <then> <var name="userpwd" value=""/> </then>
+        </if>
+        <if> <isset property="userpwd"/>
+            <then> 
+                <var name="its.password"  value="${userpwd}"/>
+                <property name="isIkanalmItsPwd"  value="true"/>
+            </then>
+        </if>
+
+        <!--echo message="ITS User ${its.user}=${its_USERID} used. pwd=${its_PASSWORD} userpwd=${userpwd}"/-->
+    </target>
+    <!-- ************************************************************************* -->
+    <!-- ************ Get connection info (Encrypted User/Password) ************** -->
+    <!-- ************************************************************************* -->
+    <target name="setItsUserPwd" if="its_found" unless="isIkanalmItsPwd" depends="setIkanalmItsPwd">
+        <condition property="itsDomain" value="ITS-${its.name}">
+            <isset property="its.name"/>
+        </condition>
+        <fail message="ITS info=ITS-${its.name} with error!">
+            <condition>
+                <not> <isset property="itsDomain"/> </not>
+            </condition>
+        </fail>
+        <var name="userid"   unset="true"/>
+        <var name="userpwd"  unset="true"/>
+        <!-- Call of the script returning the "userid" and "userpwd" properties -->
+        <property name="script.getDomainUser" value="${dir.storecrypted}/getDomainUser.xml"/>
+        <available property="isScriptDomainUser" file="${script.getDomainUser}"/>
+        <if> <isset property="isScriptDomainUser"/>
+            <then>
+                <antcallback antfile="${script.getDomainUser}" return="userid,userpwd">
+                    <!--property name="dir.storecrypted"  value="${dir.storecrypted}"/-->
+                    <property name="dbPath"  value="${dir.almDB}"/>
+                    <property name="dbName"  value="${almDBName}"/>
+                    <property name="dbPass"  value="${almDBPass}"/>
+                    <property name="domain"  value="${itsDomain}"/>
+                </antcallback>
+            </then>
+        </if>
+        <!-- ITS ALM connection if exist -->
+        <condition property="its.user" value="${userid}">
+            <isset property="userid"/>
+        </condition>
+        <condition property="its.password" value="${userpwd}">
+            <and>
+            <isset property="userid"/>
+            <equals arg1="${its.user}" arg2="${userid}"/>
+            </and>
+        </condition>
+    </target>
+</project>

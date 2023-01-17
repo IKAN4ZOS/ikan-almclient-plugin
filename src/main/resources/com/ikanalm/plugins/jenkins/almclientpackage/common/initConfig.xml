@@ -1,0 +1,131 @@
+<project name="initConfig" default="initConfig" basedir=".">
+    <description>initiate Configuration for Tool scripts</description>
+    <!-- Standalone version -->
+    <path id="antext.classpath">
+      <fileset dir="${basedir}/antext/lib">
+        <include name="*.jar"/>
+      </fileset>
+    </path>
+    <!--taskdef resource="net/sf/antcontrib/antlib.xml" classpathref="antext.classpath"/-->
+    <taskdef resource="be/ikan/tools/ant/antlib.xml"/>
+    <typedef name="isgreaterthan" classname="net.sf.antcontrib.logic.condition.IsGreaterThan" classpathref="antext.classpath"/>
+    <typedef name="islessthan"    classname="net.sf.antcontrib.logic.condition.IsLessThan"    classpathref="antext.classpath"/>
+    <taskdef name="xmltask"       classname="com.oopsconsultancy.xmltask.ant.XmlTask"         classpathref="antext.classpath"/>
+
+    <!-- ************************************************** -->
+    <!--  Special Properties expansion                      -->
+    <!-- ************************************************** -->
+    <target name="propertiesExpansion">
+        <tstamp prefix="NOW"/>
+        <property name="propertyFileALM" value="alm_ant.properties"/>
+        <property name="propertyFileSource" value="${propertyFileALM}"/>
+
+        <if> <available file="${propertyFileALM}"/>
+        <then>
+        <!-- Line to load properties into the [source]/property file       -->
+            <property file="${propertyFileALM}"/>
+        <!-- Line to expand properties into the property file              -->
+        <!-- With that, you can use properties into environment parameters -->
+        <!-- as : parameter=${otherParameter}...                           -->
+            <var file="${propertyFileALM}"/> <!-- That expands properties  -->
+            <echo message="property File ALM=${propertyFileALM} found!"/>
+        </then>
+        </if>
+        <!-- Optional ALM parameters                                       -->
+        <property name="alm.project.vcrProjectName"    value=""/>
+        <property name="alm.rest.rights"   value="USER"/>
+
+        <property name="script.projectType" value="ALM"/>
+        <property name="resources_family"   value=""/>
+    </target>
+     <!-- ************************************************* -->
+     <!-- Normalized properties used to run scripts         -->
+     <!-- ************************************************* -->
+    <target name="projectTypeControl" depends="propertiesExpansion">
+        <osfamily property="os.family"/>
+        <switch value="${os.family}">
+          <case value="z/os"> <property name="osfamily" value="zos"/> </case>
+          <case value="os/400"> <property name="osfamily" value="as400"/> </case>
+          <default> <property name="osfamily" value="${os.family}"/> </default>
+        </switch>
+        <switch value="${osfamily}">
+          <case value="linux"> <property name="resources_family" value="unix/"/> </case>
+          <default> <property name="resources_family" value="${osfamily}/"/> </default>
+        </switch>
+    </target>
+    <!-- ************************************************************************** -->
+     <!-- Called target from main script                                            -->
+    <!-- ************************************************************************** -->
+    <target name="initConfig" depends="projectTypeControl,loadConfiguration">
+        <!-- Main IKAN ALM properties -->
+        <property name="alm.rest.rights"   value="USER"/>
+        <property name="alm.active"   value="true"/>
+        <property name="alm.baseUrl"  value="http://IKAN000:8080/alm"/>
+        <property name="alm.apiUrl"   value="${alm.baseUrl}/rest/v1"/>
+        <property name="alm.stopOnError"   value="true"/>
+        <property name="alm.rest.userid"   value=""/>
+        <property name="alm.rest.password" value=""/>
+
+	<condition property="local.list"   value="${basedir}/list/${alm.package.oid}"
+                                            else="${basedir}/list">
+	    <isset property="alm.package.oid"/>
+	</condition>
+        <propertyregex override="true"   casesensitive="false"
+            property="local.list" input="${local.list}"
+            regexp="([\\/])" replace="/" global="true"/>
+        <property name="local.work"   value="${basedir}/WORK"/>
+
+        <property name="builderName"   value="ALM_CLI"/>
+        <echo message="Script running from ${builderName} Tool."/>
+    </target>
+    <!-- ************************************************* -->
+    <!-- Load configuration properties                     -->
+    <!-- ************************************************* -->
+    <target name="loadConfiguration">
+        <!-- Find configuration file -->
+        <if> <isset property="pty.fileConfig"/>
+            <then>
+            <syntname file="${pty.fileConfig}"/>
+            <property name="propsfile.suffix" value="${syntsuffix}"/>
+            </then>
+        </if>
+        <property name="propsfile.suffix" value="properties"/>
+        <property name="dir.fileConfig"   value="${basedir}/resources"/>
+    	<property name="pty.fileConfig"
+                 value="${dir.fileConfig}/${resources_family}configuration${script.projectType}.${propsfile.suffix}"/>
+        <available file="${pty.fileConfig}" property="isConfigPty"/>
+        <antcall target="projectTypeError"/>
+        <!-- Load properties for scripts configuration -->
+        <var name="convertedFile" unset="true"/>
+        <antcallback antfile="${basedir}/common/convertXmlProperties.xml"
+                 return="convertedFile">
+           <property name="xmlfile"    value="${pty.fileConfig}"/>
+           <property name="xmlcontrol" value="true"/>
+        </antcallback>
+        <if> <isset property="convertedFile"/>
+            <then>
+            <property file="${convertedFile}"/>
+            <delete file="${convertedFile}" quiet="true"/>
+            </then>
+            <else> <loadproperties srcFile="${pty.fileConfig}"/> </else>
+        </if>
+    	<!--property name="script.toolTypeName" value="${alm.project.buildToolTypeName}" /-->
+    </target>
+    <target name="projectTypeError" unless="isConfigPty">
+	<echo>################################################################################
+ERROR : No ${pty.fileConfig} file found.
+        Verify the script for this phase or contact
+        your global administrator to review the phase configuration.
+################################################################################
+        </echo>
+	<fail message="Build FAILED for execution errors."/>
+    </target>
+    <!-- ************************************************************************** -->
+    <target name="ClearFiles">
+        <delete includeemptydirs="true" quiet="true">
+    	    <fileset dir="${local.work}"/>
+        </delete>
+    </target>
+
+    <!-- ************************************************************************** -->
+</project>

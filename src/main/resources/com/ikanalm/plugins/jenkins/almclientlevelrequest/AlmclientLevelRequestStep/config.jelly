@@ -1,0 +1,132 @@
+
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core"
+	xmlns:st="jelly:stapler"
+	xmlns:d="jelly:define" 
+	xmlns:l="/lib/layout" 
+	xmlns:t="/lib/hudson"
+	xmlns:f="/lib/form">
+
+    <f:entry title="${%alm.baseUrl}" field="almBaseUrl">
+        <f:textbox default="http://IKAN000:8080/alm"/>
+    </f:entry>
+
+    <f:entry title="${%alm.buildNumber}" field="almBuildNumber">
+        <f:textbox default="$buildNumber"/>
+    </f:entry>
+
+    <f:entry title="${%alm.deploysToExecute}" field="almDeploysToExecute">
+        <f:textbox default="$deployEnvironments"/>
+    </f:entry>
+
+    <f:entry title="${%alm.description}" field="almDescription">
+        <f:textbox default="Build created by $builderName with Rest API"/>
+    </f:entry>
+
+    <f:entry title="${%alm.levelRequest.levelName}" field="almLevelRequestLevelName">
+        <f:textbox default="$levelName"/>
+    </f:entry>
+
+    <f:entry title="${%alm.levelRequest.oid}" field="almLevelRequestOid">
+        <f:textbox />
+    </f:entry>
+
+    <f:entry title="${%alm.package.name}" field="almPackageName">
+        <f:textbox default="$packageName"/>
+    </f:entry>
+
+    <f:entry title="${%alm.project.name}" field="almProjectName">
+        <f:textbox default="$projectName"/>
+    </f:entry>
+
+    <f:entry title="${%alm.projectStream.buildPrefix}" field="almProjectStreamBuildPrefix">
+        <f:textbox default="$buildPrefix"/>
+    </f:entry>
+
+    <f:entry title="${%alm.projectStream.buildSuffix}" field="almProjectStreamBuildSuffix">
+        <f:textbox default="$buildSuffix"/>
+    </f:entry>
+
+    <f:entry title="${%alm.redeliver}" field="almRedeliver">
+        <select name="almRedeliver">
+             <option value="false">false</option>
+             <option value="true">true</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%alm.rest.password}" field="almRestPassword">
+        <f:password/>
+    </f:entry>
+
+    <f:entry title="${%alm.rest.userid}" field="almRestUserid">
+        <f:password/>
+    </f:entry>
+
+    <f:entry title="${%alm.startDate}" field="almStartDate">
+        <f:textbox />
+    </f:entry>
+
+    <f:entry title="${%alm.status}" field="almStatus">
+        <select name="almStatus">
+             <option value="None">None</option>
+             <option value="8">8</option>
+             <option value="10">10</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%alm.stopOnError}" field="almStopOnError">
+        <select name="almStopOnError">
+             <option value="true">true</option>
+             <option value="false">false</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%alm.vcrTag}" field="almVcrTag">
+        <f:textbox />
+    </f:entry>
+
+    <f:entry title="${%antInstallation}" field="antInstallation">
+        <f:select/>
+    </f:entry>
+
+    <f:entry title="${%builderAction}" field="builderAction">
+        <select name="builderAction">
+             <option value="Create">Create</option>
+             <option value="Update">Update</option>
+             <option value="Control">Control</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%builderName}" field="builderName">
+        <f:textbox default="Client"/>
+    </f:entry>
+
+    <f:entry title="${%levelRequest_access}" field="levelRequestAccess">
+        <select name="levelRequestAccess">
+             <option value="lroid">lroid</option>
+             <option value="level">level</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%paramfile}" field="paramfile">
+        <f:textbox default="parameters.properties"/>
+    </f:entry>
+
+    <f:entry title="${%status.maxwait_minutes}" field="statusMaxwaitMinutes">
+        <f:textbox default="30"/>
+    </f:entry>
+
+    <f:entry title="${%status.success.mandatory}" field="statusSuccessMandatory">
+        <f:textbox default="true"/>
+    </f:entry>
+
+    <f:entry title="${%status.waiting_seconds}" field="statusWaitingSeconds">
+        <f:textbox default="30"/>
+    </f:entry>
+
+</j:jelly>

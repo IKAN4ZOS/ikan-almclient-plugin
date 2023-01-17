@@ -1,0 +1,233 @@
+<project name="getApprovals" default="getApprovals" basedir=".">
+    <description>Get Approvals</description>
+    <!-- ************************************************** -->
+    <!-- Main target                                        -->
+    <!-- ************************************************** -->
+    <target name="getApprovals" depends="initApprovalsProperties,resetApprovalsVariables,getApprovalsList,approvalsXmlResult,displayApprovalsUnknown,approvalsHtmlResult">
+        <fail message="ERROR: IKAN ALM Get Approvals cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="approvals_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <!--antcall target="resetApprovalsVariables"/-->
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting Approvals option                         -->
+    <!-- ************************************************** -->
+    <target name="initApprovalsProperties">
+	<property name="alm.stopOnError"      value="true"/>
+	<property name="approvalstatuses"     value="1"/> <!-- Awaiting Approval (Outstanding) -->
+	<property name="outstandingapprovals" value="true"/>
+	<property name="sortcolumn"        value=""/>
+	<property name="sortdirection"     value="asc"/>
+	<property name="listview"          value="all"/>
+        <if> <equals arg1="${approvalstatuses}" arg2=""/>
+            <then>
+            <property name="approvalstatusesParam" value=""/> 
+            </then>
+            <else>
+            <for list="${approvalstatuses}" param="status">
+                    <sequential>
+                    <fail message="ERROR: approvalstatuses criteria=${approvalstatuses} is invalid! See Rest API documentation.">
+                        <condition>
+                            <isgreaterthan arg1="@{status}" arg2="6"/>
+                        </condition>
+                    </fail>
+                    </sequential>
+            </for>
+            <property name="approvalstatusesParam" value="&amp;approvalstatuses=${approvalstatuses}"/>
+            </else>
+        </if>
+        <if> <istrue value="${outstandingapprovals}"/>
+            <then> <property name="userApprovals" value="true"/> </then>
+            <else> <property name="allApprovals"  value="true"/> </else>
+        </if>
+        <if> <equals arg1="${sortcolumn}" arg2=""/>
+            <then> <property name="sortcolumnParam" value=""/> </then>
+            <else> 
+            <property name="sortcolumnParam"  value="&amp;sortcolumn=${sortcolumn}"/>
+            </else>
+        </if>
+        <if> <equals arg1="${sortdirection}" arg2=""/>
+            <then> <property name="sortdirectionParam" value=""/> </then>
+            <else>
+            <fail message="ERROR: sortdirection criteria=${sortdirection} is invalid! See Rest API documentation.">
+                <condition>
+                    <and>
+                    <not> <equals arg1="${sortdirection}" arg2="asc"/> </not>
+                    <not> <equals arg1="${sortdirection}" arg2="desc"/> </not>
+                    <not> <equals arg1="${sortdirection}" arg2="ascending"/> </not>
+                    <not> <equals arg1="${sortdirection}" arg2="descending"/> </not>
+                    <not> <equals arg1="${sortdirection}" arg2="true"/> </not>
+                    <not> <equals arg1="${sortdirection}" arg2="false"/> </not>
+                    </and>
+                </condition>
+            </fail>
+            <property name="sortdirectionParam" value="&amp;sortdirection=${sortdirection}"/>
+            </else>
+        </if>
+        <if> <equals arg1="${listview}" arg2=""/>
+            <then> <property name="listviewParam" value=""/> </then>
+            <else>
+            <fail message="ERROR: listview criteria=${listview} is invalid! See Rest API documentation.">
+                <condition>
+                    <and>
+                    <not> <equals arg1="${listview}" arg2="all"/> </not>
+                    <not> <equals arg1="${listview}" arg2="links"/> </not>
+                    </and>
+                </condition>
+            </fail>
+            <property name="listviewParam" value="&amp;view=${listview}"/>
+            </else>
+        </if>
+    </target>
+
+    <target name="resetApprovalsVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Approvals from alm User                    -->
+    <!-- ************************************************** -->
+    <target name="getOutstandingApprovals" if="userApprovals">
+        <property name="get.almUrl"     value="${alm.apiUrl}/approvals?myapprovals=true&amp;page=1&amp;pagesize=10${approvalstatusesParam}${sortdirectionParam}${listviewParam}${sortcolumnParam}"/>
+        <property name="get.message"    value="Get Outstanding Approvals"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Approvals from link                  -->
+    <!-- ************************************************** -->
+    <target name="getAllApprovals" if="allApprovals">
+        <property name="get.almUrl"     value="${alm.apiUrl}/approvals?page=1&amp;pagesize=10${approvalstatusesParam}${sortdirectionParam}${listviewParam}${sortcolumnParam}"/>
+        <property name="get.message"    value="Get All Approvals"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Approvals                            -->
+    <!-- ************************************************** -->
+    <target name="getApprovalsList" if="get.almUrl" depends="getOutstandingApprovals,getAllApprovals">
+        <property name="get.almEntity"  value="${basedir}/temp/getApprovals"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="401"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="approvalsXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="//approvals/@count"  property="approvals_count"/>
+            <copy path="//approval/id/text()" property="approvals_URNS" append="true" propertySeparator=","/>
+            <copy path="//approval/link/@href" property="approvals.LINKS" append="true" propertySeparator=","/>
+            <copy path="//approval/approved-by-user/id/text()" property="approvals_USERIDS" append="true" propertySeparator=","/>
+            <copy path="//approval/approved-by-user/@href" property="approvals_USERLINKS" append="true" propertySeparator=","/>
+            <copy path="//approval/level-id/text()" property="approvals_LEVELIDS" append="true" propertySeparator=","/>
+            <copy path="//approval/reason/text()" property="approvals_REASONS" append="true" propertySeparator=","/>
+<!--
+            <copy path="//approval/levelrequest/id/text()" property="approvals_LEVELREQUESTS" append="true" propertySeparator=","/>
+            <copy path="//approval/levelrequest/link/@href" property="approvals_LEVELREQUESTLINKS" append="true" propertySeparator=","/>
+            <copy path="//approval/projectstream/id/text()" property="approvals_PROJECTSTREAMS" append="true" propertySeparator=","/>
+            <copy path="//approval/projectstream/link/@href" property="approvals_PROJECTSTREAMLINKS" append="true" propertySeparator=","/>
+            <copy path="//approval/sequence-number/text()" property="approvals_SEQUENCENUMBERS" append="true" propertySeparator=","/>
+            <copy path="//approval/status/id/text()" property="approvals_STATUSIDS" append="true" propertySeparator=","/>
+            <copy path="//approval/status/link/@href" property="approvals_STATUSLINKS" append="true" propertySeparator=","/>
+            <copy path="//approval/type/id/text()" property="approvals_TYPEIDS" append="true" propertySeparator=","/>
+            <copy path="//approval/type/link/@href" property="approvals_TYPELINKS" append="true" propertySeparator=","/>
+            <copy path="//approval/usergroup/id/text()" property="approvals_USERGROUPIDS" append="true" propertySeparator=","/>
+            <copy path="//approval/usergroup/link/@href" property="approvals_USERGROUPLINKS" append="true" propertySeparator=","/>
+-->
+        </xmltask>
+        <property name="approvals_count"      value="0"/>
+        <condition property="task.resultMessage" value="Message=No Approvals found">
+            <equals arg1="${approvals_count}" arg2="0"/>
+        </condition>
+        <condition property="approvals_found" value="true">
+            <isgreaterthan arg1="${approvals_count}" arg2="0"/>
+        </condition>
+        <condition property="approvals_notfound" value="true">
+            <not> <isset property="approvals_found"/> </not>
+        </condition>
+        <property name="almLog.result" value="Not found"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <if> <equals arg1="${listview}" arg2="all"/>
+            <then>
+                <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+                    <not> <isset property="approvals_URNS"/> </not>
+                </condition>
+            </then>
+        </if>
+        <property name="approvals_USERIDS"     value="${alm.userid}"/>
+        <property name="approvals_URNS"        value=""/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Approvals Users=${approvals_USERIDS}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="approvalsHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- display User account not in the Database           -->
+    <!-- ************************************************** -->
+    <target name="displayApprovalsUnknown" if="approvals_notfound">
+        <echo message="WARNING: Approval Users not found!"/>
+    </target>
+</project>

@@ -1,0 +1,91 @@
+
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core"
+	xmlns:st="jelly:stapler"
+	xmlns:d="jelly:define" 
+	xmlns:l="/lib/layout" 
+	xmlns:t="/lib/hudson"
+	xmlns:f="/lib/form">
+
+    <f:entry title="${%alm.baseUrl}" field="almBaseUrl">
+        <f:textbox default="http://IKAN000:8080/alm"/>
+    </f:entry>
+
+    <f:entry title="${%alm.rest.password}" field="almRestPassword">
+        <f:password/>
+    </f:entry>
+
+    <f:entry title="${%alm.rest.userid}" field="almRestUserid">
+        <f:password/>
+    </f:entry>
+
+    <f:entry title="${%alm.stopOnError}" field="almStopOnError">
+        <select name="almStopOnError">
+             <option value="true">true</option>
+             <option value="false">false</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%antInstallation}" field="antInstallation">
+        <f:select/>
+    </f:entry>
+
+    <f:entry title="${%builderName}" field="builderName">
+        <f:textbox default="Client"/>
+    </f:entry>
+
+    <f:entry title="${%excel.sheetName}" field="excelSheetName">
+        <f:textbox default="levelRequestIssues"/>
+    </f:entry>
+
+    <f:entry title="${%issue.file}" field="issueFile">
+        <f:textbox default="$local.list/levelRequestIssues.lst"/>
+    </f:entry>
+
+    <f:entry title="${%levelName}" field="levelName">
+        <f:textbox default="$levelName"/>
+    </f:entry>
+
+    <f:entry title="${%levelRequestIssues.fileType}" field="levelRequestIssuesFileType">
+        <select name="levelRequestIssuesFileType">
+             <option value="lst">lst</option>
+             <option value="csv">csv</option>
+             <option value="xls">xls</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%levelRequestOid}" field="levelRequestOid">
+        <f:textbox default="0"/>
+    </f:entry>
+
+    <f:entry title="${%levelRequest_access}" field="levelRequestAccess">
+        <select name="levelRequestAccess">
+             <option value="lroid">lroid</option>
+             <option value="level">level</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%local.list}" field="localList">
+        <f:textbox default="$almSystem_location/list"/>
+    </f:entry>
+
+    <f:entry title="${%packageName}" field="packageName">
+        <f:textbox default="$packageName"/>
+    </f:entry>
+
+    <f:entry title="${%projectName}" field="projectName">
+        <f:textbox default="$projectName"/>
+    </f:entry>
+
+    <f:entry title="${%projectStreamPrefix}" field="projectStreamPrefix">
+        <f:textbox default="$buildPrefix"/>
+    </f:entry>
+
+    <f:entry title="${%projectStreamSuffix}" field="projectStreamSuffix">
+        <f:textbox default="$buildSuffix"/>
+    </f:entry>
+
+</j:jelly>

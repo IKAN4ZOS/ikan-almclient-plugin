@@ -1,0 +1,538 @@
+<project name="createUpdatePackage" default="createUpdatePackage" basedir=".">
+    <description>
+        Create a package with Project, Stream, Package name 
+        or/and Update it and filerevisions with package OID
+        The script uses the standard IKAN ALM parameters (alm.xx)
+    </description>
+    <!-- *********************************************************** -->
+    <!-- Main target                                                 -->
+    <!-- *********************************************************** -->
+
+	<target name="createUpdatePackage" 
+                depends="initCreateUpdatePackage,createOnePackage,createUpdatePackageXmlResult,createUpdatePackageHtmlResult,
+                        updateOnePackage">
+            <antfetch target="createUpdatePackageXmlResult" return="package_created,package_updated"/>
+            <antcall target="createUpdatePackageHtmlResult"/>
+            <fail message="ERROR: IKAN ALM Create/Update package cannot be done correctly.">
+                <condition>
+                    <and>
+                        <not> <isset property="package_created"/> </not>
+                        <not> <isset property="package_updated"/> </not>
+                        <istrue value="${alm.stopOnError}"/>
+                    </and>
+                </condition>
+            </fail>
+            <!--antcall target="resetCreateUpdatePackageVariables"/-->
+        </target>
+        <!-- ************************************************** -->
+        <!-- Adding Package options                             -->
+        <!-- ************************************************** -->
+        <target name="initCreateUpdatePackage">
+            <!-- Default properties -->
+            <property name="alm.package.oid"  value="0"/>
+            <!--property name="alm.package.link" value=""/-->
+
+    	    <property name="alm.stopOnError"      value="true"/>
+            <!-- Location of package files to link with (if not filerevisions file) -->
+            <property name="dir.package"          value="${basedir}/package"/>
+            <!-- filerevisions file (as commandline filerevisions.xml file) to link with (if not dir.package location) -->
+    	    <property name="filerevisions"        value="${basedir}/filerevisions.xml"/>
+            <!-- Add property file link for each file found in dir.package location -->
+            <property name="addPropertyFileLink" value="false"/>
+            <!-- Maintain file link for file not found in dir.package location -->
+            <property name="allFilerevisions"    value="false"/>
+
+            <condition property="package.oid" value="${alm.package.oid}">
+                <and>
+                    <isset property="alm.package.oid"/>
+                    <not> <equals arg1="${alm.package.oid}" arg2=""/> </not>
+                    <not> <equals arg1="${alm.package.oid}" arg2="0"/> </not>
+                </and>
+            </condition>
+            <condition property="package.name" value="${alm.package.name}">
+                <and>
+                    <isset property="alm.package.name"/>
+                    <not> <equals arg1="${alm.package.name}" arg2=""/> </not>
+                </and>
+            </condition>
+            <if> <equals arg1="${package.oid}" arg2=""/>
+                <then> <var name="package.oid" unset="true"/> </then>
+            </if>
+            <if> <equals arg1="${package.oid}" arg2="0"/>
+                <then> <var name="package.oid" unset="true"/> </then>
+            </if>
+            <if> <equals arg1="${package.name}" arg2=""/>
+                <then> <var name="package.name" unset="true"/> </then>
+            </if>
+<!-- Not supported here
+            <if> <equals arg1="${package.link}" arg2=""/>
+                <then> <var name="package.link" unset="true"/> </then>
+            </if>
+-->
+	</target>
+
+        <target name="resetCreateUpdatePackageVariables">
+            <var name="post.almBody"   unset="true"/>
+            <var name="post.almEntity" unset="true"/>
+            <var name="post.almLogfile" unset="true"/>
+            <var name="post.almUrl"    unset="true"/>
+            <var name="post.message"   unset="true"/>
+            <var name="task.status"    unset="true"/>
+            <var name="task.message"   unset="true"/>
+            <var name="task.result"    unset="true"/>
+            <var name="task.resultMessage"   unset="true"/>
+            <var name="xmlLog.file"    unset="true"/>
+            <var name="xmlResult.log"  unset="true"/>
+            <var name="xmlResponse"    unset="true"/>
+        </target>
+
+        <target name="createPackageBodyData" unless="package.oid">
+            <property name="alm.project.name" value=""/>
+            <property name="alm.projectStream.buildPrefix" value=""/>
+            <property name="alm.projectStream.buildSuffix" value=""/>
+            <property name="alm.package.name" value=""/>
+            <property name="alm.package.description" value=""/>
+            <property name="alm.package.archived" value=""/>
+            <property name="alm.package.status" value="0"/>
+            <property name="alm.package.userid" value="${alm.rest.userid}"/>
+            <if> <not> <equals arg1="${alm.package.userid}" arg2=""/> </not>
+                <then>
+            <antfetch target="getUserAccount" return="almuser.oid">
+                <param name="alm.userid" value="${alm.package.userid}"/>
+                <param name="user.oid"   value="0"/>
+                <param name="user.link"  value=""/>
+            </antfetch>
+            <property name="alm.package.owner" value="${almuser.oid}"/>
+                </then>
+            </if>
+            <property name="alm.package.owner" value=""/>
+            <property name="alm.package.targetdate" value=""/>
+
+            <condition property="alm.projectStream" value="${alm.projectStream.buildPrefix}"
+                                                else="${alm.projectStream.buildPrefix}-${alm.projectStream.buildSuffix}">
+               <equals arg1="${alm.projectStream.buildSuffix}" arg2=""/>
+		</condition>
+            <property name="post.almEntity"  value="${basedir}/temp/createUpdatePackage-${alm.package.name}"/>
+            <property name="post.almBody"    value="${post.almEntity}.xml"/>
+            <antcall target="createPackageBody"/>
+        </target>
+
+        <target name="createPackageBody">
+            <property name="cru.project.name"  value="${alm.project.name}"/>
+	    <property name="cru.projectStream" value="${alm.projectStream}"/>
+	    <property name="cru.package.name"  value="${alm.package.name}"/>
+	    <property name="cru.package.description" value="${alm.package.description}"/>
+	    <property name="cru.package.archived" value="${alm.package.archived}"/>
+            <property name="cru.package.owner" value="${alm.package.owner}"/>
+            <property name="cru.package.status"   value="${alm.package.status}"/>
+            <property name="cru.package.targetdate" value="${alm.package.targetdate}"/>
+            <if> <not> <equals arg1="${alm.package.targetdate}" arg2=""/> </not>
+                <then> <antcall target="controlTargetdate"/> </then>
+            </if>
+            <!-- Generate Post body without file -->
+            <copy file="${dir.almModels}/alm_package_header_xml.model"
+                tofile="${post.almBody}" overwrite="true">
+                <filterchain> <expandproperties/> </filterchain>
+            </copy>
+            <if> <not> <equals arg1="${cru.package.owner}" arg2=""/> </not>
+              <then>
+                <echo file="${post.almBody}" append="true">&lt;owner&gt;${cru.package.owner}&lt;/owner&gt;${line.separator}</echo>
+              </then>
+            </if>
+            <if> <not> <equals arg1="${cru.package.targetdate}" arg2=""/> </not>
+              <then>
+                <echo file="${post.almBody}" append="true">&lt;target-release-date&gt;${cru.package.targetdate}&lt;/target-release-date&gt;${line.separator}</echo>
+              </then>
+            </if>
+        </target>
+
+        <!-- ************************************************** -->
+        <!-- Posting a Package                                  -->
+        <!-- ************************************************** -->
+        <target name="createOnePackage" unless="package.oid" depends="resetCreateUpdatePackageVariables,createPackageBodyData">
+  	    <!-- Create an IKAN ALM Package using the RESTful API -->
+            <echo file="${post.almBody}" append="true">&lt;/package&gt;${line.separator}</echo>
+            <property name="post.almUrl"     value="${alm.apiUrl}/packages"/>
+            <property name="post.message"    value="Create package"/>
+            <property name="post.almLogfile" value="${post.almEntity}_log.xml"/>
+            <var name="post.status"    unset="true"/>
+            <http url="${post.almUrl}"
+                method="POST" expected="201" failonunexpected="false" statusProperty="post.status"
+                printrequest="false" printresponse="false"
+                printrequestheaders="false" printresponseheaders="false"
+                outfile="${post.almLogfile}">
+                <entity file="${post.almBody}"/>
+                <headers>
+                    <header name="Accept" value="application/xml"/>
+                    <header name="Content-Type" value="application/xml"/>
+                    <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+                </headers>
+            </http>
+            <property name="task.status"   value="${post.status}"/>
+            <property name="task.message"  value="${post.message}"/>
+            <property name="xmlLog.file"   value="${post.almLogfile}"/>
+            <condition property="xmlResponse" value="true">
+                <islessthan arg1="${task.status}" arg2="404"/>
+            </condition>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Updating a Package                                 -->
+        <!-- ************************************************** -->
+        <target name="updatePackageBodyData" if="package.oid" unless="package_notfound">
+	    <property name="alm.project.name"  value="${package_PROJECTNAME}"/>
+            <propertyregex  property="alm.projectStream"  input="${package_PROJECTSTREAM_NOTATION}"
+                  regexp="^${package_PROJECTNAME}\ [H|B]\_(.*)" select="\1"/>
+	    <property name="alm.package.name"  value="${package_NAME}"/>
+	    <property name="alm.package.description" value="${package_DESCRIPTION}"/>
+	    <property name="alm.package.archived"    value="${package_ARCHIVED}"/>
+            <property name="alm.package.status" value="${package_STATUS_CODE}"/>
+            <property name="alm.package.userid" value="${alm.rest.userid}"/>
+            <if> <equals arg1="${alm.package.userid}" arg2=""/>
+                <then>
+                <property name="alm.package.owner" value=""/>
+                </then>
+                <else>
+                <antfetch target="getUserAccount" return="almuser.oid">
+                    <param name="alm.userid" value="${alm.package.userid}"/>
+                    <param name="user.oid"   value="0"/>
+                    <param name="user.link"  value=""/>
+                </antfetch>
+                </else>
+            </if>
+            <property name="alm.package.owner" value="${package_OWNER}"/>
+            <property name="alm.package.targetdate" value="${package_TARGETDATE}"/>
+            <property name="post.almEntity"  value="${basedir}/temp/createUpdatePackage-${package.oid}"/>
+            <property name="post.almBody"    value="${post.almEntity}.xml"/>
+            <antcall target="createPackageBody"/>
+        </target>
+
+        <!-- ************************************************** -->
+        <!-- Patching a Package                                 -->
+        <!-- ************************************************** -->
+        <target name="updateOnePackage" if="package.oid" unless="package_notfound" depends="getPackage,resetCreateUpdatePackageVariables,updatePackageBodyData">
+  	    <!-- Update an IKAN ALM Package using the RESTful API -->
+        <!-- Manage filerevisions file from a directory or defined file in 'filerevisions' property -->
+            <available file="${filerevisions}" type="file" property="packageFilerevisions.OK"/>
+            <available file="${dir.package}" type="dir" property="packageDir.OK"/>
+        <!--echo message="packageFilerevisions.OK=${packageFilerevisions.OK}, packageDir.OK=${packageDir.OK}"/-->
+            <antfetch target="readPackageFileRevisions" return="packageFilerevisions"/>
+            <antfetch target="managePackageFileRevisions" return="packageFilerevisions,almETag-Contents.text"/>
+            <property name="packageFilerevisions"    value=""/>
+
+            <echo file="${post.almBody}" append="true">${packageFilerevisions}&lt;/package&gt;${line.separator}</echo>
+            <var name="post.almUrl"     value="${alm.apiUrl}/packages/${package.oid}"/>
+            <property name="post.message"    value="Update package=${package.oid}"/>
+            <property name="post.almLogfile" value="${post.almEntity}_log.xml"/>
+            <var name="post.status"    unset="true"/>
+        <!--echo message="almETag-Package.text=${almETag-Package.text}"/-->
+        <!--echo message="almETag-Contents.text=${almETag-Contents.text}"/-->
+        <!--echo message="Cookie=${almCookie.key}=${almCookie.text}"/-->
+            <http url="${post.almUrl}"
+                method="PATCH" expected="200" failonunexpected="false" statusProperty="post.status"
+                printrequest="false" printresponse="false"
+                printrequestheaders="false" printresponseheaders="false"
+                outfile="${post.almLogfile}">
+                <entity file="${post.almBody}"/>
+                <headers>
+                    <header name="Accept" value="application/xml"/>
+                    <header name="Content-Type" value="application/xml"/>
+                    <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+                    <header name="If-Match" value="${almETag-Package.text}"/>
+                    <header name="If-Match-Contents" value="${almETag-Contents.text}"/>
+                    <!--header name="X-HTTP-Method-Override" value="PATCH"/-->
+                </headers>
+            </http>
+            <var name="task.status"   value="${post.status}"/>
+            <var name="task.message"  value="${post.message}"/>
+            <var name="xmlLog.file"   value="${post.almLogfile}"/>
+            <var name="xmlResponse"    unset="true"/>
+            <condition property="xmlResponse" value="true">
+                <islessthan arg1="${task.status}" arg2="404"/>
+            </condition>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the XML response file                   -->
+        <!-- ************************************************** -->
+        <target name="createUpdatePackageXmlResult" if="xmlResponse">
+            <var name="almLog.result" unset="true"/>
+            <var name="task.result"   unset="true"/>
+            <var name="task.resultMessage"   unset="true"/>
+            <xmltask source="${xmlLog.file}">
+                <copy path="//error/message/text()"  property="almLog.result"/>
+                <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+                <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+                <copy path="//error/detail/text()"  property="almLog.detail"/>
+                <copy path="//packagecru-report/packagecru-report-step/text()" property="almLog.detail" append="true" propertySeparator="; "/>
+                <copy path="//package/id/text()"  property="package_OID_URN"/>
+                <copy path="//package/name/text()"  property="package_NAME"/>
+                <copy path="//package/description/text()"  property="package_DESCRIPTION"/>
+                <copy path="//package/archived/text()"  property="package_ARCHIVED"/>
+                <copy path="//package/vcr-tag/text()"  property="package_VCRTAG"/>
+                <copy path="//package/owner/id/text()"  property="package_OWNER"/>
+                <copy path="//package/owner/link/@href"  property="package_OWNER_LINK"/>
+                <copy path="//package/project/id/text()"  property="package_PROJECT"/>
+                <copy path="//package/project/link/@href"  property="package_PROJECT_LINK"/>
+                <copy path="//package/project-name/text()"  property="package_PROJECTNAME"/>
+                <copy path="//package/projectstream/id/text()"  property="package_PROJECTSTREAM"/>
+                <copy path="//package/projectstream/link/@href"  property="package_PROJECTSTREAM_LINK"/>
+                <copy path="//package/projectstream-short-notation/text()"  property="package_PROJECTSTREAM_NOTATION"/>
+                <copy path="//package/status/id/text()"  property="package_STATUS_CODE"/>
+                <copy path="//package/status/text/text()"  property="package_STATUS_TEXT"/>
+                <copy path="//package/target-release-date/text()"  property="package_TARGETDATE"/>
+            </xmltask>
+            <if> <isset property="package_OID_URN"/>
+                <then>
+                    <propertyregex property="package_OID"
+                          input="${package_OID_URN}" casesensitive="false"
+                          regexp="urn\:alm\:package\:([0-9]+)\:.*" select="\1"/>
+                </then>
+            </if>
+            <property name="almLog.result" value="Package Error"/>
+            <condition property="task.resultMessage" value="Message=${almLog.detail}">
+                <isset property="almLog.detail"/>
+            </condition>
+            <property name="almLog.detail" value=""/>
+            <property name="almLog.detail2" value=""/>
+            <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+                <not> <isset property="package_OID"/> </not>
+            </condition>
+            <condition property="package_created" value="true">
+                <and>
+                <isset property="package_OID"/>
+                <not> <isset property="package.oid"/> </not>
+                </and>
+            </condition>
+            <condition property="package_updated" value="true">
+                <and>
+                <isset property="package_OID"/>
+                <isset property="package.oid"/>
+                </and>
+            </condition>
+            <property name="package_OID"     value="0"/>
+            <property name="package_NAME"    value="Package ${package_OID}"/>
+            <property name="package_DESCRIPTION"   value="Unknown"/>
+            <property name="package_STATUS_TEXT"   value=""/>
+            <property name="package_TARGETDATE"    value=""/>
+            <property name="package.oid"     value="${package_OID}"/>
+            <property name="package.name"    value="${package_NAME}"/>
+            <property name="package.description"    value="${package_DESCRIPTION}"/>
+            <property name="task.result" value="${almLog.result}"/>
+            <property name="task.resultMessage" value="Package Oid=${package_OID} Name=${package_NAME}"/>
+    
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.${line.separator}${xmlResult.log}">
+                <condition>
+                    <and>
+                    <istrue value="${alm.stopOnError}"/>
+                    <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                    <not> <equals arg1="${task.status}" arg2="201"/> </not>
+                    </and>
+                </condition>
+            </fail>
+            <property name="package.oid"     value="${package_OID}"/>
+        </target>
+        <!-- ************************************************** -->
+        <!-- Looking at the HTML response file                  -->
+        <!-- ************************************************** -->
+        <target name="createUpdatePackageHtmlResult" if="post.almUrl" unless="xmlResponse">
+            <var name="almLog.result" unset="true"/>
+            <property name="almLog.result" value="Client Error"/>
+            <property name="task.resultMessage" value="Message=${almLog.result}"/>
+            <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+            <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+            <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+    
+            <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.${line.separator}${xmlResult.log}">
+                <condition>
+                    <istrue value="${alm.stopOnError}"/>
+                </condition>
+            </fail>
+        </target>
+
+        <!-- ************************************************************** -->
+        <!-- Getting filerevisions in property packageFilerevisions         -->
+        <!-- ************************************************************** -->
+        <target name="readPackageFileRevisions" if="packageFilerevisions.OK" unless="packageDir.OK">
+            <loadfile srcfile="${filerevisions}" property="packageFilerevisions">
+                <filterchain>
+                    <linecontains negate="true">
+                          <contains value="version"/>
+                          <contains value="encoding"/>
+                    </linecontains>
+                </filterchain>
+            </loadfile>
+        </target>
+
+        <!-- ************************************************************** -->
+        <!-- Getting filerevisions of a Package in packageFiles_included    -->
+        <!-- Adding filerevisions in creation for a Package                 -->
+        <!-- ************************************************************** -->
+        <target name="managePackageFileRevisions" if="packageDir.OK" unless="packageFilerevisions.OK" depends="getPackageFilerevisions"> <!-- See getPackage.xml script -->
+            <propertyregex override="true" casesensitive="false" defaultValue="${dir.package}"
+                property="packagePath"  input="${dir.package}"
+                  regexp="([\\/])" replace="/" global="true"/>
+            <property name="includedFiles"    value="**"/>
+            <property name="excludedFiles"    value=""/>
+            <echo message="package Files path=${packagePath}" level="info"/>
+            <!--var name="fileLine"  value="&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;"/-->
+            <var name="fileLine"  value=""/>
+            <var name="fileLine"  value="${fileLine}${line.separator}&lt;filerevisions&gt;${line.separator}"/>
+            <echo file="${basedir}/temp/package_${package.oid}_files.xml">${fileLine}</echo>
+
+            <!-- Delete each filerevision not in dir.package -->
+            <var name="fileaction" value="delete"/>
+            <for list="${packageFiles_included}" param="filePath" delimiter=",">
+                <sequential>		<!-- Do work for each file -->
+                    <var name="thisfile" value="@{filePath}"/>
+                    <var name="file_included"  unset="true"/>
+                    <condition property="file_included" value="true">
+                        <and>
+                            <isfalse value="${allFilerevisions}"/>
+                            <not> <available file="${packagePath}${thisfile}"/> </not>
+                        </and>
+                    </condition>
+                    <!-- Add file in filerevisions if not found -->
+                    <antcall target="addFileRevisionLine"/>
+                </sequential>
+            </for>
+
+            <!-- Delete the first '/' in the file path for ignoring filerevisions already linked to the package -->
+            <for list="${packageFiles_included}" param="filePath" delimiter=",">
+                <sequential>
+                    <propertyregex property="filePath" override="true"
+                                  input="@{filePath}" casesensitive="false"
+                                  regexp="^(\/)" replace=""/>
+                    <propertyregex property="filePath" override="true"
+                                  input="${filePath}" casesensitive="false"
+                                  regexp="^(\/)" replace=""/>
+                    <var name="excludedFiles"    value="${excludedFiles}${filePath},"/>
+                </sequential>
+            </for>
+            <propertyregex property="excludedFiles" override="true"
+                      input="${excludedFiles}" casesensitive="false"
+                      regexp="(\,)$" replace=""/>
+            <echo message="Already linked files=${excludedFiles}" level="info"/>
+            <!-- Add the property file for each selected file, if asked -->
+            <antcall target="addingPropertyFileLink"/>
+
+            <var name="fileaction" value="create"/>
+            <var name="file_included"  value="true"/>
+            <!-- Generate each filerevision -->
+            <for param="file">
+                <path>
+                    <fileset dir="${packagePath}" includes="${includedFiles}" excludes="${excludedFiles}"/>
+                </path>
+                <sequential>		<!-- Do work for each file -->
+                    <propertyregex override="true" casesensitive="false" defaultValue="@{file}"
+                        property="pathOfFile"  input="@{file}"
+                          regexp="([\\/])" replace="/" global="true"/>
+                <!-- Suppress Source location for using the result -->
+                    <propertyregex override="true" casesensitive="false" defaultValue="${pathOfFile}"
+                        property="thisfile"  input="${pathOfFile}"
+                          regexp="${packagePath}(.*)" select="\1"/>
+                    <antcall target="addFileRevisionLine"/>
+                </sequential>
+            </for>
+            <var name="fileLine"  value="&lt;/filerevisions&gt;${line.separator}"/>
+            <echo file="${basedir}/temp/package_${package.oid}_files.xml" append="true">${fileLine}</echo>
+            <loadfile srcfile="${basedir}/temp/package_${package.oid}_files.xml" property="packageFilerevisions"/>
+        </target>
+        <!-- ************************************************************** -->
+        <!-- add FileRevision Line                                          -->
+        <!-- ************************************************************** -->
+        <target name="addFileRevisionLine" if="file_included">
+            <!--syntname file="${thisfile}"/-->
+            <var name="syntbase" unset="true"/>
+            <basename file="${thisfile}" property="syntbase"/>
+            <propertyregex override="true" casesensitive="false" defaultValue="/"
+                property="syntpath"  input="${thisfile}"
+                  regexp="([\w\-\.\/]+)\/${syntbase}$" select="\1"/>
+            <propertyregex override="true" casesensitive="false" defaultValue="${syntbase}"
+                property="syntname"  input="${syntbase}"
+                  regexp="([\w\-\.]+)\.[\w]+$" select="\1"/>
+            <propertyregex override="true" casesensitive="false" defaultValue=""
+                property="syntsuffix"  input="${syntbase}"
+                  regexp="[\w\-\.]+\.([\w]+)$" select="\1"/>
+            <echo message="${fileaction} file=${thisfile}" level="info"/>
+
+            <var name="fileLine"  value="  &lt;filerevision&gt;${line.separator}    &lt;name&gt;${syntbase}&lt;/name&gt;${line.separator}"/>
+            <if> <equals arg1="${syntpath}" arg2=""/>
+                <then>
+                    <var name="fileLine"  value="${fileLine}    &lt;path&gt;/&lt;/path&gt;${line.separator}"/>
+                </then>
+                <else>
+                    <var name="fileLine"  value="${fileLine}    &lt;path&gt;${syntpath}&lt;/path&gt;${line.separator}"/>
+                </else>
+            </if>
+            <var name="fileLine"  value="${fileLine}    &lt;action&gt;${fileaction}&lt;/action&gt;${line.separator}"/>
+            <!--var name="fileLine"  value="${fileLine}&lt;revision&gt;${filerevision}&lt;/revision&gt;${line.separator}"/-->
+            <var name="fileLine"  value="${fileLine}  &lt;/filerevision&gt;${line.separator}"/>
+            <echo file="${basedir}/temp/package_${package.oid}_files.xml" append="true">${fileLine}</echo>
+        </target>
+        <!-- ************************************************************** -->
+        <!-- Complete Package files with property files                     -->
+        <!-- ************************************************************** -->
+        <target name="addingPropertyFileLink" if="${addPropertyFileLink}">
+            <property name="dir_properties"    value="properties"/>
+            <for param="file">
+                <path>
+                    <fileset dir="${packagePath}" includes="${includedFiles}" excludes="${excludedFiles}"/>
+                </path>
+                <sequential>		<!-- Do work for each file -->
+                    <propertyregex override="true" casesensitive="false" defaultValue="@{file}"
+                        property="pathOfFile"  input="@{file}"
+                          regexp="([\\/])" replace="/" global="true"/>
+                <!-- Suppress Source location for using the result -->
+                    <propertyregex override="true" casesensitive="false" defaultValue="${pathOfFile}"
+                        property="thisfile"  input="${pathOfFile}"
+                          regexp="${packagePath}(.*)" select="\1"/>
+                    <!--syntname file="${thisfile}"/-->
+                    <var name="syntbase" unset="true"/>
+                    <basename file="${thisfile}" property="syntbase"/>
+                    <propertyregex override="true" casesensitive="false" defaultValue="${syntbase}"
+                        property="syntname"  input="${syntbase}"
+                          regexp="([\w\-\.]+)\.([\w]+)$" select="\1"/>
+                    <var name="propertyFile.OK" unset="true"/>
+                    <available file="${packagePath}/${dir_properties}/${syntname}.properties" property="propertyFile.OK"/>
+                    <if> <not> <isset property="propertyFile.OK"/> </not>
+                      <then>
+                         <echo file="${packagePath}/${dir_properties}/${syntname}.properties" message="Link property file to package"/>
+                      </then>
+                    </if>
+                </sequential>
+            </for>
+    </target>
+        <!-- ************************************************** -->
+        <!-- Verifying the alm.package.targetdate value         -->
+        <!-- ************************************************** -->
+        <target name="controlTargetdate">
+            <propertyregex property="validdate"
+                  input="${alm.package.targetdate}" casesensitive="false"
+                  regexp="^((?:19|20)[0-9][0-9])-(0?[1-9]|1[012])-(0?[1-9]|[12][0-9]|3[01])$" replace="true"/>
+            <fail message="ERROR: IKAN ALM Package alm.package.targetdate is invalid! (format yyyy-MM-dd)">
+                <condition>
+                        <not> <isset property="validdate"/> </not>
+                </condition>
+            </fail>
+            <propertyregex property="thedate"
+                  input="${alm.package.targetdate}" casesensitive="false"
+                  regexp="^([0-9]+)-([0-9]+)-([0-9]+)$" select="\1\2\3"/>
+            <tstamp>
+                <format property="next.targetdate" pattern="yyyy-MM-dd"
+                        offset="1" unit="minute"/>
+            </tstamp>
+            <propertyregex property="nextdate"
+                  input="${next.startDate}" casesensitive="false"
+                  regexp="^([0-9]+)-([0-9]+)-([0-9]+)$" select="\1\2\3"/>
+<!--echo message="thedate=${thedate} ${next.targetdate} nextdate=${nextdate}"/-->
+            <if> <islessthan arg1="${thedate}" arg2="${nextdate}"/>
+                <then>
+                    <echo message="WARNING: IKAN ALM Package has alm.package.targetdate before now!"/>
+                </then>
+            </if>
+         </target>
+
+</project>

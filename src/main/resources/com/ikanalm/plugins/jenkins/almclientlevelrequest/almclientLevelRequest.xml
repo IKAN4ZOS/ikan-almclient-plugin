@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="almclientLevelRequest" basedir="." default="almclientLevelRequest">
+
+	<description>
+		Sample Ant script that uses the integration with a Builder (Jenkins/Hudson) for IKAN ALM Level Requests
+                It works via the RESTful API.
+
+        Parameters used :
+			- builderAction (e.g.: Create, Update, Control)
+			- builderName (e.g.: Client/Jenkins/Cloudbees/Hudson/..)
+
+		for launching the ALM LevelRequest : properties are taken from the client parameters.
+
+			- alm.baseUrl (e.g.: http://IKAN000:8080/alm)
+			- alm.rest.userid (e.g.: global)
+			- alm.rest.password (e.g.: global)
+                Main parameters
+			- alm.project.name (e.g.: MYSAMPLE)
+			- alm.projectStream.buildPrefix (e.g.: 1-0)
+			- alm.projectStream.buildSuffix (optional)
+			- alm.levelRequest.levelName (e.g.: levelName)
+			- alm.package.name (e.g.: packageName)
+			- alm.environment.name (e.g.: environmentName) (Better defined in minus characters)
+			- alm.vcrTag (e.g.: B_${alm.projectStream.buildPrefix}_${alm.projectStream.buildSuffix}_${alm.package.name}_${builderName}-${system.BUILD_TAG})
+			- alm.buildNumber (e.g.: 1)
+			- alm.redeliver (e.g.: true/false)
+			- alm.startDate (starting date/time (format yyyy-MM-ddTHH:mm:ss) e.g. 2021-10-20T18:30:00)
+			- alm.deploysToExecute : (e.g.: environmentName, ...)
+			- alm.description (e.g.: ${builderName}.url=${alm.baseUrl})
+		Always
+			- alm.stopOnError (e.g.: true/false)
+		Optional parameters
+			- levelRequest_access (e.g.: lroid, level)
+			- paramfile : environment parameters file (e.g. parameters.properties)
+
+		Optional parameters for controling the LevelRequest Status in searchLevelRequestStatus.xml script
+			- status.success.mandatory (e.g.: true/false)
+                        - status.maxwait_minutes (e.g.: 30=Wait for final status if LR in course)
+                        - status.waiting_seconds (e.g.: 60)
+
+		Update parameters
+			- alm.status (e.g.: 8=Cancel or 10=Abort)
+
+	</description>
+        
+        <property name="dir.commonScripts" value="${basedir}/common"/>
+        <import file="${dir.commonScripts}/initConfig.xml"/>
+
+        <import file="${dir.commonScripts}/createLevelRequest.xml"/>
+
+        <import file="${dir.commonScripts}/getLevelRequest.xml"/>
+
+        <!--import file="${dir.commonScripts}/getMachineIP.xml"/-->
+
+        <import file="${dir.commonScripts}/httpConfigControl.xml"/>
+
+        <import file="${dir.commonScripts}/loginAlmSession.xml"/>
+
+        <import file="${dir.commonScripts}/searchLevelRequestStatus.xml"/>
+
+        <import file="${dir.commonScripts}/updateLevelRequest.xml"/>
+
+        <taskdef resource="net/sf/antcontrib/antlib.xml" classpathref="antext.classpath"/>
+
+        <property environment="system"/>
+
+	<target name="initCLR">
+		<!-- Define properties from external tool -->
+                <property name="builderAction" value="Create"/>
+                <property name="source" value="${system.WORKSPACE}"/>
+		<!-- Properties for creating the LR in IKAN ALM -->
+                <property name="alm.project.name" value=""/>
+                <property name="alm.projectStream.buildPrefix" value=""/>
+                <property name="alm.projectStream.buildSuffix" value=""/>
+                <property name="alm.levelRequest.levelName"  value=""/>
+                <property name="alm.package.name" value=""/>
+                <property name="alm.buildNumber" value=""/>
+                <property name="alm.vcrTag" value=""/>
+                <property name="alm.redeliver" value="false"/>
+                <property name="alm.startDate" value=""/>
+<!-- Test
+                <if> <not> <equals arg1="${alm.startDate}" arg2=""/> </not>
+                    <then> <antcall target="controlStartDate"/> </then>
+                </if>
+                <fail/>
+-->
+                <property name="alm.deploysToExecute" value=""/>
+                <property name="alm.description" value="${builderName}.url=${alm.baseUrl}"/>
+                <!--property name="alm.environmentParameters" value=""/-->
+                <condition property="alm.projectStream" value="${alm.projectStream.buildPrefix}"
+                        else="${alm.projectStream.buildPrefix}-${alm.projectStream.buildSuffix}">
+                   <or>
+                   <not> <isset property="alm.projectStream.buildSuffix"/> </not>
+                   <equals arg1="${alm.projectStream.buildSuffix}" arg2=""/>
+                   </or>
+                </condition>
+		<!-- Properties for updating the LR in IKAN ALM -->
+                <property name="alm.levelRequest.oid" value=""/>
+                <if> <equals arg1="${alm.levelRequest.oid}" arg2=""/>
+                    <then>
+                          <var name="alm.levelRequest.oid" unset="true"/>
+                          <property name="ulr.levelRequest.oid"   value="0"/>
+                    </then>
+                    <else>
+                          <property name="ulr.levelRequest.oid"   value="${alm.levelRequest.oid}"/>
+                    </else>
+                </if>
+
+                <property name="ulr.description"        value="${alm.description}"/>
+                <property name="ulr.requested-datetime" value="${alm.startDate}"/>
+<!-- Test
+                <if> <not> <equals arg1="${ulr.requested-datetime}" arg2=""/> </not>
+                    <then> <antcall target="controlRequestedDatetime"/> </then>
+                </if>
+                <fail/>
+-->
+		<echo message="Level Request Action=${builderAction}"/>
+                <!-- Update LR -->
+		<condition property="updateLevelRequest" value="true">
+                   <and>
+                        <equals arg1="${builderAction}" arg2="Update" casesensitive="false" trim="true"/>
+  			<!--isgreaterthan arg1="${ulr.levelRequest.oid}" arg2="0"/-->
+                   </and>
+                </condition>
+                <property name="alm.status"             value=""/>
+                <property name="ulr.status"             value="${alm.status}"/>
+                <!-- Create LR and/or control LR status -->
+		<echo message="project.revision=${project.revision}" level="info"/>
+		<condition property="startLevelRequest" value="false">
+  			<isset property="updateLevelRequest"/>
+                </condition>
+		<condition property="ignoreControl" value="true">
+  			<isset property="updateLevelRequest"/>
+                </condition>
+
+		<condition property="startLevelRequest" value="true">
+                        <equals arg1="${builderAction}" arg2="Create" casesensitive="false" trim="true"/>
+                </condition>
+		<condition property="controlLevelRequest" value="true">
+		    <or>
+                        <equals arg1="${builderAction}" arg2="Create" casesensitive="false" trim="true"/>
+                        <equals arg1="${builderAction}" arg2="Control" casesensitive="false" trim="true"/>
+		    </or>
+                </condition>
+  		<property name="paramfile" value=""/>
+		<condition property="loadParameters" value="true">
+                   <and>
+  			<isset property="startLevelRequest"/>
+  			<not> <equals arg1="${paramfile}" arg2=""/> </not>
+    			<available file="${paramfile}" type="file"/>
+                   </and>
+                </condition>
+                <echo message="Project=${alm.project.name} Stream=${alm.projectStream} Package=${alm.package.name} Level=${alm.levelRequest.levelName} Build=${alm.buildNumber} User=${alm.rest.userid}"/>
+                <property name="status.success.mandatory" value="true"/> <!-- Success not mandatory -->
+	</target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : almclientLevelRequest                              -->
+        <!-- *********************************************************** -->
+	<target name="almclientLevelRequest"
+                depends="initConfig,initCLR,loginAlmSession,levelRequest_create,levelRequest_update,controlLevelRequestStatus,logoutAlmSession">
+	</target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : Level Request create                               -->
+        <!-- *********************************************************** -->
+	<target name="levelRequest_create" if="${startLevelRequest}">
+                 <echo message="Creating a new LevelRequest"/>
+                <!-- Managing LevelRequest Environment(s) parameters (must be managed) -->
+                <!-- IKAN ALM Environment parameters -->
+                <antfetch target="loadParameters" return="alm.environmentParameters"/>
+                <property name="alm.environmentParameters" value=""/>
+                <!--antfetch target="loginAlmSession" return="almCookie.key,almCookie.text"/-->
+                <!-- Create ALM Level Request -->
+                <antfetch target="createALM_LevelRequest" return="alm.levelrequest.oid"/>
+                <!-- Ignore the LR status control if a date is defined -->
+                <var name="alm.levelRequest.oid" value="${alm.levelrequest.oid}"/>
+                <var name="levelRequest_access"  value="lroid"/>
+		<condition property="ignoreControl" value="true">
+                   <or>
+			<not> <equals arg1="${alm.startDate}" arg2=""/> </not>
+  			<not> <isset property="alm.levelrequest.oid"/> </not>
+                   </or>
+                </condition>
+		<condition property="ignoreControl" value="true">
+                   <and>
+			<equals arg1="${alm.project.name}" arg2=""/>
+			<equals arg1="${alm.projectStream.buildPrefix}" arg2=""/>
+			<equals arg1="${alm.levelRequest.levelName}" arg2=""/>
+  			<not> <isset property="alm.levelrequest.oid"/> </not>
+                   </and>
+                </condition>
+	</target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : Load Parameters                                    -->
+        <!-- *********************************************************** -->
+	<target name="loadParameters" if="loadParameters">
+                <syntname file="${paramfile}"/>
+                <property name="paramfileTmp" value="${basedir}/temp/${syntbase}"/>
+                <property name="paramfileXml" value="${basedir}/temp/${syntname}.xml"/>
+		<copy tofile="${paramfileTmp}" overwrite="yes" file="${paramfile}">
+		        <filterchain> <expandproperties/> </filterchain>
+		</copy>
+                <if> <equals arg1="${syntsuffix}" arg2="xml"/>
+                    <then>
+                        <xmltask source="${paramfileTmp}">
+                            <copy path="//parameters/entry/key/text()"  property="clr_parameter"/>
+                        </xmltask>
+                        <if> <isset property="clr_parameter"/>
+                            <then>
+                                <loadfile srcfile="${paramfileTmp}" property="alm.environmentParameters"/>
+                            </then>
+                            <else>
+                                <echo>Warning! The LevelRequest parameters file is not valid and ignored!!</echo>
+                            </else>
+                        </if>
+                    </then>
+                </if>
+                <if> <equals arg1="${syntsuffix}" arg2="properties"/>
+                    <then>
+                        <echo file="${paramfileXml}">    &lt;parameters&gt;</echo>
+                        <for param="oneline">
+                                <tokens> <file file="${paramfileTmp}"/> </tokens>
+                                <sequential>
+                                    <var name="lineComment"  unset="true"/>
+                                    <var name="propertyLine" unset="true"/>
+                                    <propertyregex property="lineComment" input="@{oneline}"
+                                          regexp="^(\#).*"  select="\1"/>
+                        	    <condition property="propertyLine" value="true">
+                                       <and>
+                    			<not> <isset property="lineComment"/> </not>
+                      			<not> <equals arg1="@{oneline}" arg2=""/> </not>
+                                       </and>
+                                    </condition>
+                                    <if> <isset property="propertyLine"/>
+                                        <then>
+                                        <propertyregex property="paramName" input="@{oneline}" override="true"
+                                                regexp="(.*)\=.*"  select="\1"/>
+                                        <propertyregex property="paramValue" input="@{oneline}" override="true"
+                                                regexp=".*\=(.*)"  select="\1"/>
+                                        <echo file="${paramfileXml}" append="true">
+                    &lt;entry&gt;&lt;key&gt;${paramName}&lt;/key&gt;&lt;value&gt;${paramValue}&lt;/value&gt;&lt;/entry&gt;</echo>
+                                        </then>
+                                    </if>
+                            </sequential>
+                        </for>
+                        <echo file="${paramfileXml}" append="true">${line.separator}    &lt;/parameters&gt;${line.separator}</echo>
+                        <loadfile srcfile="${paramfileXml}" property="alm.environmentParameters"/>
+                    </then>
+                </if>
+
+		<delete file="${paramfileTmp}" quiet="true"/>
+                <delete file="${paramfileXml}" quiet="true"/>
+        </target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : Create ALM LevelRequest                            -->
+        <!-- *********************************************************** -->
+        <target name="createALM_LevelRequest">
+
+                <antfetch target="createLevelRequest" return="lr_created,levelrequest.oid"/>
+                <if> <not> <isset property="lr_created"/> </not>
+                    <then>
+                        <antcall target="logoutAlmSession"/>
+                        <fail message="${line.separator}ERROR: LevelRequest is not created!${line.separator}" if="${alm.stopOnError}"/>
+                    </then>
+                </if>
+                <var name="alm.levelrequest.oid" value="${levelrequest.oid}"/>
+        </target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : levelRequestStatus                                 -->
+        <!-- *********************************************************** -->
+        <target name="levelRequestStatusIgnore" if="ignoreControl">
+                 <echo message="No Result control for the LevelRequest '${alm.levelrequest.oid}' because alm.startDate=${alm.startDate} or bad parameter(s)!"/>
+        </target>
+
+        <target name="controlLevelRequestStatus" if ="controlLevelRequest" depends="levelRequestStatusIgnore" unless="ignoreControl">
+                 <condition property="oidKo" value="true">
+                   <or>
+                       <not> <isset property="alm.levelRequest.oid"/> </not>
+                       <equals arg1="${alm.levelRequest.oid}" arg2=""/>
+                       <equals arg1="${alm.levelRequest.oid}" arg2="0"/>
+                   </or>
+                </condition>
+                <if> <isset property="oidKo"/>
+                    <then>
+                        <antcall target="logoutAlmSession"/>
+                        <fail message="Error: Control LevelRequest Oid=${alm.levelRequest.oid} must be provided!"/>
+                    </then>
+                </if>
+                <!--antfetch target="loginAlmSession" return="almCookie.key,almCookie.text"/-->
+                <property name="levelRequest_access"     value="lroid"/>
+                <switch value="${levelRequest_access}">
+                    <case value="level">
+                        <var name="levelRequestOid"  value="0"/>
+                        <property name="projectName" value="${alm.project.name}"/>
+                        <property name="projectStreamPrefix" value="${alm.projectStream.buildPrefix}"/>
+                        <condition property="projectStreamSuffix" value="${alm.projectStream.buildSuffix}" else="">
+                            <isset property="alm.projectStream.buildSuffix"/>
+                        </condition>
+                        <property name="levelName"   value="${alm.levelRequest.levelName}"/>
+                        <condition property="packageName" value="${alm.package.name}" else="">
+                            <isset property="alm.package.name"/>
+                        </condition>
+                        <property name="lrLevel"     value="true"/>
+                    </case>
+                    <default>
+                        <property name="levelRequestOid" value="${alm.levelRequest.oid}"/>
+                    </default>
+                </switch>
+                <property name="levelRequestOid"     value="0"/>
+                <property name="projectName"         value=""/>
+                <property name="projectStreamPrefix" value=""/>
+                <property name="projectStreamSuffix" value=""/>
+                <property name="levelName"           value=""/>
+                <property name="packageName"         value=""/>
+                <condition property="projectStream" value="${projectStreamPrefix}" else="${projectStreamPrefix}-${projectStreamSuffix}">
+                    <equals arg1="${projectStreamSuffix}" arg2=""/>
+                </condition>
+        
+                <if> <isset property="lrLevel"/>
+                    <then>
+                    <echo message="Using Project=${projectName} Stream=${projectStream} Level=${levelName}  Package=${packageName}"/>
+                    </then>
+                    <else>
+                    <echo message="Using Level Request=${levelRequestOid}"/>
+                    </else>
+                </if>
+
+                <antfetch target="searchLevelRequestStatus" return="LR_OID,LR_STATUS,LR_STATUSNAME,lr_completed,lr_waiting,lr_running,lr_success,status.maxwait_minutes"/>
+                <if> <not> <isset property="lr_completed"/> </not>
+                    <then>
+                        <echo message="WARNING: Level Request '${LR_OID}' control stops with status=${LR_STATUSNAME} for the duration=${status.maxwait_minutes} minute(s)."/>
+                    </then>
+                </if>
+                <condition property="tofail" value="true">
+                   <and>
+                       <not> <isset property="lr_completed"/> </not>
+                       <not> <isset property="lr_waiting"/> </not>
+                       <not> <isset property="lr_success"/> </not>
+                       <istrue value="${alm.stopOnError}"/>
+                   </and>
+                </condition>
+                <condition property="tofail" value="true">
+                   <and>
+                       <not> <isset property="lr_success"/> </not>
+                       <istrue value="${status.success.mandatory}"/>
+                       <istrue value="${alm.stopOnError}"/>
+                   </and>
+                </condition>
+                <if> <isset property="tofail"/>
+                    <then> 
+                        <antcall target="logoutAlmSession"/>
+                        <fail message="Fail: Level Request '${LR_OID}' has status=${LR_STATUSNAME}"/>
+                    </then>
+                </if>
+
+	</target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : Level Request Status control                       -->
+        <!-- *********************************************************** -->
+        <target name="controlNewStatus" if="updateLevelRequest">
+                <condition property="newStatusOk" value="true">
+                   <or>
+                       <equals arg1="${ulr.status}" arg2=""/>
+                       <equals arg1="${ulr.status}" arg2="8"/>
+                       <equals arg1="${ulr.status}" arg2="10"/>
+                   </or>
+                </condition>
+                <if> <not> <isset property="newStatusOk"/> </not>
+                    <then>
+                        <antcall target="logoutAlmSession"/>
+                        <fail message="Error: New LevelRequest Status=${ulr.status} must be empty or 8=Cancel or 10=Abort!"/>
+                    </then>
+                </if>
+
+                 <condition property="oidKo" value="true">
+                   <or>
+                       <not> <isset property="alm.levelRequest.oid"/> </not>
+                       <equals arg1="${alm.levelRequest.oid}" arg2=""/>
+                       <equals arg1="${alm.levelRequest.oid}" arg2="0"/>
+                   </or>
+                </condition>
+                <if> <isset property="oidKo"/>
+                    <then>
+                        <antcall target="logoutAlmSession"/>
+                        <fail message="Error: Control LevelRequest Oid=${alm.levelRequest.oid} must be provided!"/>
+                    </then>
+                </if>
+        </target>
+
+        <!-- *********************************************************** -->
+        <!-- Target : Level Request update                               -->
+        <!-- *********************************************************** -->
+	<target name="levelRequest_update" if="updateLevelRequest" depends="controlNewStatus">
+                <antfetch target="levelRequestStatus_extract" return="almETag-LevelRequest.text,lr_found,lr_completed,LR_DESCRIPTION,LR_STATUS,LR_STATUSNAME,LR_REQUESTEDDATETIME,LR_ACTION,LR_ACTIONTYPE">
+                        <param name="levelrequest.oid"        value="${ulr.levelRequest.oid}"/>
+                        <param name="levelrequest.link"       value=""/>
+                </antfetch>
+                <if> <isset property="lr_found"/>
+                    <then>
+                        <echo message="Old description=${LR_DESCRIPTION}, status=${LR_STATUSNAME}, requesteddatetime=${LR_REQUESTEDDATETIME}, action=${LR_ACTIONTYPE}" level="warning"/>
+                    </then>
+                </if>
+                <if> <isset property="lr_completed"/>
+                    <then>
+                        <var name="ulr.description" value="${LR_DESCRIPTION}"/>
+                        <var name="ulr.requested-datetime" value=""/>
+                        <var name="ulr.status" value=""/>
+                    </then>
+                    <else>
+                        <if> <equals arg1="${ulr.description}" arg2=""/>
+                            <then> <var name="ulr.description" unset="true"/> </then>
+                        </if>
+                        <property name="ulr.description" value="${LR_DESCRIPTION}"/>
+        
+                        <if> <equals arg1="${ulr.requested-datetime}" arg2=""/>
+                            <then> <var name="ulr.requested-datetime" unset="true"/> </then>
+                        </if>
+                        <property name="ulr.requested-datetime" value="${LR_REQUESTEDDATETIME}"/>
+                    </else>
+                </if>
+
+                <property name="old_description" value="${LR_DESCRIPTION}"/>
+                <property name="old_status" value="${LR_STATUS}"/>
+                <property name="old_requesteddatetime" value="${LR_REQUESTEDDATETIME}"/>
+
+                <echo message="Updating the LevelRequest=${ulr.levelRequest.oid}"/>
+                <var name="LR_DESCRIPTION" unset="true"/>
+                <var name="LR_STATUS" unset="true"/>
+                <var name="LR_REQUESTEDDATETIME" unset="true"/>
+                <antfetch target="updateLevelRequest" return="lr_updated,LR_DESCRIPTION,LR_STATUS,LR_REQUESTEDDATETIME"/>
+                <if> <isset property="lr_updated"/>
+                    <then> <antcall target="levelRequestUpdated"/> </then>
+                    <else> <antcall target="levelRequestUpdateIgnore"/> </else>
+                </if>
+        </target>
+
+        <target name="levelRequestUpdated">
+                <condition property="notupdated" value="true">
+                   <and>
+			<equals arg1="${old_description}" arg2="${LR_DESCRIPTION}"/>
+			<equals arg1="${old_status}" arg2="${LR_STATUS}"/>
+			<equals arg1="${old_requesteddatetime}" arg2="${LR_REQUESTEDDATETIME}"/>
+                   </and>
+                </condition>
+                <if> <isset property="notupdated"/>
+                    <then>
+                        <antcall target="levelRequestUpdateIgnore"/>
+                    </then>
+                    <else>
+                        <echo message="LevelRequest=${ulr.levelRequest.oid} is updated!${line.separator}"/>
+                        <echo message="New description=${LR_DESCRIPTION}, status=${LR_STATUS}, requesteddatetime=${LR_REQUESTEDDATETIME}, action=${LR_ACTION}" level="warning"/>
+                    </else>
+                </if>
+        </target>
+
+        <target name="levelRequestUpdateIgnore">
+                <if> <istrue value="${alm.stopOnError}"/>
+                    <then>
+                        <antcall target="logoutAlmSession"/>
+                        <fail message="${line.separator}ERROR: LevelRequest is not updated!${line.separator}"/>
+                    </then>
+                    <else>
+                        <echo message="${line.separator}ERROR: LevelRequest is not updated!${line.separator}"/>
+                    </else>
+                </if>
+        </target>
+
+</project>

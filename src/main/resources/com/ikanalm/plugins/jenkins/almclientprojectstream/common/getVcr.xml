@@ -1,0 +1,555 @@
+<project name="getVcr" default="getVcr" basedir=".">
+    <description>Get a Vcr via Rest Api</description>
+
+    <!-- ************************************************** -->
+    <!-- Main target                                        -->
+    <!-- ************************************************** -->
+    <target name="getVcr" depends="initVcrProperties,resetVcrVariables,getOneVcr,vcrXmlResult,vcrHtmlResult,setVcrUserPwd">
+        <fail message="ERROR: IKAN ALM Get VCR cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="vcr_name_ignore"/> </not>
+                    <not> <isset property="vcr_found"/> </not>
+                    <not> <isset property="vcr_notfound"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <if> <istrue value="${setVcrInfo}"/>
+            <then> <antcall target="setVcrInfo"/> </then>
+        </if>
+        <echo file="${local.list}/${getVCR.properties}" append="true">
+#</echo>
+        <var file="${local.list}/${getVCR.properties}"/>
+        <fail message="VCR of ${project.name} not available!">
+            <condition>
+                <not> <isset property="vcr.name"/> </not>
+            </condition>
+        </fail>
+        <echo message="VCR: ${vcr.name} linked to project: ${project.name}."/>
+        <antcall target="resetVcrVariables"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting Vcr access option                        -->
+    <!-- ************************************************** -->
+    <target name="initVcrProperties">
+	<property name="alm.stopOnError"      value="true"/>
+        <if> <equals arg1="${vcr.name}" arg2="" casesensitive="false"/>
+            <then> 
+            <var name="vcr.name" unset="true"/>
+            <property name="vcr_name_ignore" value="true"/>
+            </then>
+        </if>
+        <if> <equals arg1="${vcr.oid}" arg2="0"/>
+            <then> <var name="vcr.oid" unset="true"/> </then>
+            <else> <var name="vcr.link" value=""/> </else>
+        </if>
+        <if> <equals arg1="${vcr.link}" arg2=""/>
+            <then> <var name="vcr.link" unset="true"/> </then>
+        </if>
+        <var name="readETag"  unset="true"/>
+        <condition property="readETag" value="true">
+            <or>
+                <isset property="vcr.oid"/>
+                <isset property="vcr.link"/>
+            </or>
+        </condition>
+        <property name="getVCR.properties"   value="getVCR.properties"/>
+    </target>
+    <target name="resetVcrVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting Vcr type                                 -->
+    <!-- ************************************************** -->
+    <target name="initVcrTypename">
+        <fail message="VCR type of ${project.name} not available!">
+            <condition>
+            <and>
+                <not> <isset property="vcr.type"/> </not>
+                <not> <isset property="vcr.typename"/> </not>
+            </and>
+            </condition>
+        </fail>
+
+        <if> <isset property="vcr.type"/>
+            <then> 
+                <convertProperty outputproperty="vcr.type" string="${vcr.type}" mode="upper"/>
+                <switch value="${vcr.type}">
+                    <case value="CVS">
+                        <property name="vcr.typename" value="concurentversionsystem"/>
+                    </case>
+                    <case value="SVN">
+                        <property name="vcr.typename" value="subversion"/>
+                    </case>
+                    <case value="GIT">
+                        <property name="vcr.typename" value="git"/>
+                    </case>
+                    <case value="TFVC">
+                        <property name="vcr.typename" value="tfvc"/>
+                    </case>
+<!--
+                    <case value="CCB">
+                        <property name="vcr.typename" value="clearcasebase"/>
+                    </case>
+                    <case value="PVCS">
+                        <property name="vcr.typename" value="pvcs"/>
+                    </case>
+                    <case value="VSS">
+                        <property name="vcr.typename" value="visualsourcesafe"/>
+                    </case>
+-->
+                    <default/>
+                </switch>
+            </then>
+        </if>
+        <if> <isset property="vcr.typename"/>
+            <then> 
+                <convertProperty outputproperty="vcr.typename" string="${vcr.typename}" mode="lower"/>
+                <echo message="VCR typename ${vcr.typename}"/>
+                <switch value="${vcr.typename}">
+                    <case value="concurentversionsystem">
+                        <property name="vcr.type" value="CVS"/>
+                    </case>
+                    <case value="subversion">
+                        <property name="vcr.type" value="SVN"/>
+                    </case>
+                    <case value="git">
+                        <property name="vcr.type" value="GIT"/>
+                    </case>
+                    <case value="tfvc">
+                        <property name="vcr.type" value="TFVC"/>
+                    </case>
+<!--
+                    <case value="clearcasebase">
+                        <property name="vcr.type" value="CCB"/>
+                    </case>
+                    <case value="pvcs">
+                        <property name="vcr.type" value="PVCS"/>
+                    </case>
+                    <case value="visualsourcesafe">
+                        <property name="vcr.type" value="VSS"/>
+                    </case>
+-->
+                    <default/>
+                </switch>
+            </then>
+        </if>
+        <fail message="VCR typename ${vcr.typename} of ${project.name} not available!">
+            <condition>
+                <not> <isset property="vcr.typename"/> </not>
+            </condition>
+        </fail>
+
+        <fail message="VCR type ${vcr.type} of ${project.name} not available!">
+            <condition>
+                <not> <isset property="vcr.type"/> </not>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Vcr from Oid                               -->
+    <!-- ************************************************** -->
+    <target name="getVcrFromOid" if="vcr.oid">
+        <antfetch target="initVcrTypename" return="vcr.type,vcr.typename"/>
+        <property name="get.almUrl"     value="${alm.apiUrl}/${vcr.typename}s/${vcr.oid}"/>
+        <property name="get.message"    value="Get ${vcr.typename} Oid=${vcr.oid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Vcr from Name                              -->
+    <!-- ************************************************** -->
+    <target name="getVcrFromLink" if="vcr.link">
+        <property name="get.almUrl"     value="${vcr.link}"/>
+        <property name="get.message"    value="Get Vcr Link=${vcr.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Vcr from Name                              -->
+    <!-- ************************************************** -->
+    <target name="getVcrFromName" if="vcr.name">
+        <antfetch target="initVcrTypename" return="vcr.type,vcr.typename"/>
+        <property name="get.almUrl"     value="${alm.apiUrl}/${vcr.typename}s?name=${vcr.name}&amp;page=1&amp;pagesize=10&amp;sortdirection=asc"/>
+        <property name="get.message"    value="Get Vcr Name=${vcr.name}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Vcr                                        -->
+    <!-- ************************************************** -->
+    <target name="getOneVcr" if="get.almUrl" depends="getVcrFromOid,getVcrFromLink,getVcrFromName">
+        <property name="get.almEntity"  value="${basedir}/temp/getVcr"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <property name="get.headers"    value="${get.almEntity}_headers.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}" outheadersfile="${get.headers}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="404"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="vcrXmlResult" if="xmlResponse">
+        <var name="almLog.result"    unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="//error/cause/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="//${vcr.typename}s/@count"  property="vcrs_count"/>
+            <copy path="//${vcr.typename}/link/@href" property="vcr.link"/>
+            <copy path="//${vcr.typename}/id/text()" property="vcr_URN"/>
+            <copy path="//${vcr.typename}/type/text()" property="vcr_TYPE"/>
+            <copy path="//${vcr.typename}/name/text()" property="vcr_NAME"/>
+            <copy path="//${vcr.typename}/description/text()" property="vcr_DESCRIPTION"/>
+            <copy path="//${vcr.typename}/user-id/text()" property="vcr_USERID"/>
+            <copy path="//${vcr.typename}/password/text()" property="vcr_PASSWORD"/>
+            <copy path="//${vcr.typename}/timeout/text()" property="vcr_TIMEOUT"/>
+            <copy path="//${vcr.typename}/command-path/text()" property="vcr_COMMANDPATH"/>
+            <copy path="//${vcr.typename}/repository-url/text()" property="vcr_REPOSITORYURL"/>
+            <copy path="//${vcr.typename}/repository-push-url/text()" property="vcr_REPOSITORYPUSHURL"/>
+            <copy path="//${vcr.typename}/repository-layout/id/text()" property="vcr_REPOSITORYLAYOUT"/>
+            <copy path="//${vcr.typename}/trunk-directory/text()" property="vcr_TRUNKDIRECTORY"/>
+            <copy path="//${vcr.typename}/tags-directory/text()" property="vcr_TAGSDIRECTORY"/>
+            <copy path="//${vcr.typename}/fetch-meta-properties/text()" property="vcr_METAPROPERTIES"/>
+            <copy path="//${vcr.typename}/type/text()" property="vcr_TYPE"/>
+            <copy path="//${vcr.typename}/root-path/text()" property="vcr_ROOTPATH"/>
+            <copy path="//${vcr.typename}/project-vob/text()" property="vcr_PROJECTVOB"/>
+            <copy path="//${vcr.typename}/collection-url/text()" property="vcr_COLLECTIONURL"/>
+            <copy path="//${vcr.typename}/default-branch-name/text()" property="vcr_BRANCHNAME"/>
+        </xmltask>
+        <if> <equals arg1="${task.status}" arg2="200"/>
+            <then> 
+                <property name="vcrs_count"  value="1"/>
+                <antfetch target="vcrETag" return="vcrETag.text"/>
+            </then>
+        </if>
+        <property name="vcrs_count"  value="0"/>
+        <condition property="task.resultMessage" value="Message=No VCR ${vcr.type} found.">
+            <and>
+            <equals arg1="${vcrs_count}" arg2="0"/>
+            <not> <isset property="almLog.result"/> </not>
+            </and>
+        </condition>
+        <if> <isset property="vcr_URN"/>
+            <then>
+                <propertyregex property="vcr_OID"
+                      input="${vcr_URN}" casesensitive="false"
+                      regexp="urn\:alm\:${vcr.typename}\:([0-9]+)\:.*" select="\1"/>
+            </then>
+        </if>
+        <property name="almLog.result" value="Not found"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="vcr_OID"/> </not>
+        </condition>
+        <condition property="vcr_found" value="true">
+            <isset property="vcr_OID"/>
+        </condition>
+        <condition property="vcr.name" value="${vcr_NAME}">
+            <isset property="vcr_NAME"/>
+        </condition>
+        <condition property="vcr_notfound" value="true">
+            <equals arg1="${task.status}" arg2="400"/>
+        </condition>
+        <property name="vcr_OID"     value="0"/>
+        <property name="vcr.oid"     value="${vcr_OID}"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="VCR=${vcr_NAME}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="vcrHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Searching at the Etag response header parameter    -->
+    <!-- ************************************************** -->
+    <target name="vcrETag" if="readETag">
+        <var name="alm_headers"  unset="true"/>
+        <loadfile property="alm_headers" srcfile="${get.headers}"/>
+        <var name="almETag.text" unset="true"/>
+        <propertyregex property="vcrETag.text"
+              input="${alm_headers}" casesensitive="false"
+              regexp="ETag\:\ (\&quot;[\w]+\&quot;)" select="\1"/>
+        <fail message="ERROR: ETag response header parameter is not found!">
+            <condition>
+                <and>
+                    <not> <isset property="vcrETag.text"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Project VCR Info                                   -->
+    <!-- ************************************************** -->
+    <target name="setVcrInfo">
+        <property name="vcr.secure" value="true"/>
+        <var name="vcr.project" unset="true"/>
+        <fail message="ERROR! VCR info of project=${project.name} ${projectStream.buildPrefix} ${projectStream.buildPrefix} cannot be found!">
+            <condition>
+                <not> <isset property="vcr_TYPE"/> </not>
+            </condition>
+        </fail>
+        <if> <isset property="vcr_TYPE"/>
+            <then> 
+                <convertProperty outputproperty="vcr.type" string="${vcr_TYPE}" mode="upper"/>
+            </then>
+        </if>
+        <switch value="${vcr.type}">
+           <case value="SVN">
+              <property name="vcr.repository" value="${vcr_REPOSITORYURL}"/>
+              <property name="svn.layout"     value="${vcr_REPOSITORYLAYOUT}"/>
+              <property name="svn.trunk.dir"  value="${vcr_TRUNKDIRECTORY}"/>
+              <property name="svn.tags.dir"   value="${vcr_TAGSDIRECTORY}"/>
+           </case>
+           <case value="CVS">
+              <property name="vcr.repository" value="${vcr_ROOTPATH}"/>
+              <!-- Project/Branch CVS Location -->
+              <condition property="vcr.project" value="${project.vcrProjectName}"
+                                                else="${project.vcrProjectName}/${projectStream.vcrbranchid}">
+                 <or>
+                 <equals arg1="${projectStream.vcrbranchid}" arg2="null"/>
+                 <equals arg1="${projectStream.vcrbranchid}" arg2=""/>
+                 </or>
+              </condition>
+           </case>
+<!--
+           <case value="CCB">
+              <property name="vcr.repository" value="${vcr_PROJECTVOB}"/>
+              <var name="vcr.secure" value="false"/>
+           </case>
+           <case value="PVCS">
+              <property name="vcr.repository" value="${vcr_PROJECTDATABASE}"/>
+           </case>
+           <case value="VSS">
+              <property name="vcr.repository" value="${vcr_INIPATH}"/>
+           </case>
+-->
+           <case value="GIT">
+              <property name="vcr.repository" value="${vcr_REPOSITORYURL}"/>
+              <property name="vcr.repositoryPush" value="${vcr_REPOSITORYPUSHURL}"/>
+              <condition property="vcr.branchName" value="${vcr_BRANCHNAME}" else="main">
+                  <and>
+                      <isset property="vcr_BRANCHNAME"/>
+                      <not> <equals arg1="${vcr_BRANCHNAME}" arg2="null"/> </not>
+                      <not> <equals arg1="${vcr_BRANCHNAME}" arg2=""/> </not>
+                  </and>
+              </condition>
+              <condition property="vcr.project" value="${vcr.branchName}"
+                            else="${projectStream.vcrbranchid}">
+                  <or>
+                      <equals arg1="${projectStream.vcrbranchid}" arg2="null"/>
+                      <equals arg1="${projectStream.vcrbranchid}" arg2=""/>
+                  </or>
+              </condition>
+           </case>
+           <case value="TFVC">
+              <property name="vcr.repository" value="${vcr_COLLECTIONURL}"/>
+           </case>
+           <default>
+              <fail message="VCR type : ${vcr.type} not supported by this process!"/>
+           </default>
+        </switch>
+        <!-- Project/Branch other VCR Location -->
+        <condition property="vcr.project" value="${project.vcrProjectName}"
+                                          else="${projectStream.vcrbranchid}">
+           <or>
+           <equals arg1="${projectStream.vcrbranchid}" arg2="null"/>
+           <equals arg1="${projectStream.vcrbranchid}" arg2=""/>
+           </or>
+        </condition>
+        <echo message="VCR type=${vcr.type}, Repository=${vcr.repository}/${vcr.project}"/>
+        <property name="vcr.name"     value="${vcr_NAME}"/>
+        <property name="vcr.commandpath" value="${vcr_COMMANDPATH}"/>
+        <property name="vcr.timeout"  value="${vcr_TIMEOUT}"/>
+        <property name="vcr.user"     value="${vcr_USERID}"/>
+        <property name="vcr.password" value=""/>
+        <if> <equals arg1="${vcr.user}" arg2=""/>
+          <then> <var name="vcr.password" value=""/> </then>
+        </if>
+        <if> <equals arg1="${vcr.type}" arg2="SVN"/>
+          <then>
+          <property name="svn.url"    value="${vcr.repository}"/>
+          <property name="svn.user"   value="${vcr.user}"/>
+          <!--property name="svn.passwd" value="${vcr.password}"/-->
+          <property name="svn.branches.dir"   value="branches"/>
+          <!-- "Defining" values for Project on SVN Repository -->
+          <switch value="${svn.layout}">
+             <case value="1">
+                <property name="svn.baseUrl"  value="${svn.trunk.dir}/${project.vcrProjectName}"/>
+                <property name="svn.tagsUrl"  value="${svn.tags.dir}/${project.vcrProjectName}"/>
+                <property name="svn.branUrl"  value="${svn.branches.dir}/${project.vcrProjectName}"/>
+             </case>
+             <case value="2">
+                <property name="svn.baseUrl"  value="${svn.trunk.dir}"/>
+                <property name="svn.tagsUrl"  value="${svn.tags.dir}"/>
+                <property name="svn.branUrl"  value="${svn.branches.dir}"/>
+             </case>
+             <default>
+                <property name="svn.baseUrl"  value="${project.vcrProjectName}/${svn.trunk.dir}"/>
+                <property name="svn.tagsUrl"  value="${project.vcrProjectName}/${svn.tags.dir}"/>
+                <property name="svn.branUrl"  value="${project.vcrProjectName}/${svn.branches.dir}"/>
+             </default>
+          </switch>
+          <condition property="svn.project" value="${svn.baseUrl}" else="${projectStream.vcrbranchid}">
+             <equals arg1="${projectStream.type}" arg2="H"/>
+          </condition>
+          </then>
+        </if>
+        <antcall target="setVcrProperties"/>
+    </target>
+    <!-- ************************************************************************* -->
+    <!-- ********** Set IKANALM Pass (Using Password)                   ********** -->
+    <!-- ************************************************************************* -->
+    <target name="setIkanalmVcrPwd">
+        <property name="vcr.user"       value="${vcr_USERID}"/>
+        <!-- VCR password ALM connection if exist -->
+        <var name="userpwd"  unset="true"/>
+        <var name="isIkanalmVcrPwd"  unset="true"/>
+        <condition property="userpwd" value="${vcr_PASSWORD}">
+            <and>
+            <equals arg1="${vcr.user}" arg2="${vcr_USERID}"/>
+            <not> <equals arg1="${vcr.user}" arg2=""/> </not>
+            <isset property="vcr_PASSWORD"/>
+            <not> <equals arg1="${vcr_PASSWORD}" arg2=""/> </not>
+            <not> <equals arg1="${vcr_PASSWORD}" arg2="********"/> </not>
+            </and>
+        </condition>
+        <if> <equals arg1="${vcr.user}" arg2=""/>
+          <then> <var name="userpwd" value=""/> </then>
+        </if>
+        <if> <isset property="userpwd"/>
+            <then> 
+                <var name="vcr.password"  value="${userpwd}"/>
+                <property name="isIkanalmVcrPwd"  value="true"/>
+            </then>
+        </if>
+        <property name="svn.user"   value="${vcr_USERID}"/>
+        <condition property="svn.passwd" value="${userpwd}">
+            <and>
+            <equals arg1="${vcr.type}" arg2="SVN"/>
+            <isset property="userpwd"/>
+            </and>
+        </condition>
+        <property name="svn.passwd" value="${vcr.password}"/>
+        <antcall target="setVcrProperties"/>
+    </target>
+    <!-- ************************************************************************* -->
+    <!-- ************ Get VCR connection info (Crypted User/Password) ************ -->
+    <!-- ************************************************************************* -->
+    <target name="setVcrUserPwd" if="vcr_found" unless="isIkanalmVcrPwd" depends="setIkanalmVcrPwd">
+        <condition property="vcrDomain" value="${vcr.type}-${vcr.name}">
+            <and>
+            <isset property="vcr.type"/>
+            <isset property="vcr.name"/>
+            </and>
+        </condition>
+        <fail message="VCR info=${vcr.type}-${vcr.name} with error!">
+            <condition>
+                <not> <isset property="vcrDomain"/> </not>
+            </condition>
+        </fail>
+        <var name="userid"   unset="true"/>
+        <var name="userpwd"  unset="true"/>
+        <!-- Call of the script returning the "userid" and "userpwd" properties -->
+        <property name="script.getDomainUser" value="${dir.storecrypted}/getDomainUser.xml"/>
+        <antcallback antfile="${script.getDomainUser}" return="userid,userpwd">
+            <!--property name="dir.storecrypted"  value="${dir.storecrypted}"/-->
+            <property name="dbPath"  value="${dir.almDB}"/>
+            <property name="dbName"  value="${almDBName}"/>
+            <property name="dbPass"  value="${almDBPass}"/>
+            <property name="domain"  value="${vcrDomain}"/>
+        </antcallback>
+        <!-- VCR ALM connection if exist -->
+        <condition property="vcr.user" value="${userid}">
+            <isset property="userid"/>
+        </condition>
+        <condition property="vcr.password" value="${userpwd}">
+            <and>
+            <isset property="userid"/>
+            <equals arg1="${vcr.user}" arg2="${userid}"/>
+            </and>
+        </condition>
+        <property name="svn.user"   value="${vcr.user}"/>
+        <condition property="svn.passwd" value="${userpwd}">
+            <and>
+            <isset property="userid"/>
+            <equals arg1="${svn.user}" arg2="${userid}"/>
+            <equals arg1="${vcr.type}" arg2="SVN"/>
+            </and>
+        </condition>
+        <property name="svn.passwd" value="${vcr.password}"/>
+        <antcall target="setVcrProperties"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Project VCR Info in properties                     -->
+    <!-- ************************************************** -->
+    <target name="setVcrProperties">
+
+        <delete quiet="true">
+            <fileset dir="${local.list}" includes="${getVCR.properties}"/>
+        </delete>
+        <echoproperties destfile="${local.list}/${getVCR.properties}">
+          <propertyset>
+            <propertyref prefix="project."/>
+            <propertyref prefix="projectStream."/>
+            <propertyref prefix="package."/>
+            <propertyref prefix="vcr."/>
+            <propertyref prefix="svn."/>
+          </propertyset>
+        </echoproperties>
+        <echo file="${local.list}/${getVCR.properties}" append="true">
+projectStream=${projectStream}
+        </echo>
+    </target>
+
+</project>

@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="propertyFormat" default="propertyFormat" basedir=".">
+    <description>Convert a property to lower, upper or other cases</description>
+    <!-- ************************************************************************** -->
+    <!-- ***********Provide property from a string with conversion mode *********** -->
+    <!-- ************************************************************************** -->
+    <!-- Mode=
+                Upper: All in uppercase
+                Lower: All in lowercase
+                First: First letter in uppercase one time
+                Wfirst: First letter in lowercase one time
+                Capitalize: First letter in uppercase and lower next letters of each one separated by a blank or '.'
+                Minimalize: First letter in lowercase and upper next letters of each one separated by a blank or '.'
+    -->
+    <!-- Reverse=
+                True: complete the Capitalized words with lower cases
+                False: Let the Capitalized words with upper or lower cases
+    -->
+    <scriptdef name="convertProperty" language="javascript">
+        <attribute name="outputproperty"/>
+        <attribute name="string"/>
+        <attribute name="mode"/>
+        <attribute name="reverse"/>
+        prty = attributes.get("outputproperty");
+        strg = attributes.get("string");
+        mode = attributes.get("mode");
+        // Uppercase
+        if (mode.toLocaleUpperCase().charAt(0) == "U") {
+              project.setNewProperty( prty, strg.toUpperCase() );
+              project.setProperty( prty, strg.toUpperCase() );
+        }
+        // Lowercase
+        if (mode.toLocaleUpperCase().charAt(0) == "L") {
+              project.setNewProperty( prty, strg.toLowerCase() );
+              project.setProperty( prty, strg.toLowerCase() );
+        }
+        // First letter uppercase
+        if (mode.toLocaleUpperCase().charAt(0) == "F") {
+              project.setNewProperty( prty, strg.substr(0,1).toUpperCase() + strg.substr(1) );
+              project.setProperty( prty, strg.substr(0,1).toUpperCase() + strg.substr(1) );
+        }
+        // First letter lowercase
+        if (mode.toLocaleUpperCase().charAt(0) == "W") {
+              project.setNewProperty( prty, strg.substr(0,1).toLowerCase() + strg.substr(1) );
+              project.setProperty( prty, strg.substr(0,1).toLowerCase() + strg.substr(1) );
+        }
+        // Capitalize first letter and lower next letters of each word
+        if (mode.toLocaleUpperCase().charAt(0) == "C") {
+              var strg1 = strg;
+              reverse = attributes.get("reverse");
+              // if (reverse == null) reverse = "false";
+              if (reverse.toLocaleUpperCase().charAt(0) == "T") var strg1 = strg.toLocaleUpperCase();
+              var i = strg1.lastIndexOf(".");
+              if (i != -1) {
+                 var sep = ".";
+              } else {
+                 i = strg1.lastIndexOf(" ");
+                 var sep = " ";
+              }
+              if (i != -1) {
+                 var tab = strg1.split(sep);
+                 for (i = 0; i &lt; tab.length; i++) {
+                     tab[i] = tab[i].charAt(0).toLocaleUpperCase() + tab[i].slice(1);
+                 var strg2 = tab.join(sep);
+                 }
+              }
+              else {
+                 var strg2 = strg1.charAt(0).toLocaleUpperCase() + strg1.slice(1);
+              }
+              project.setNewProperty( prty, strg2 );
+              project.setProperty( prty, strg2 );
+        }
+        // Minimalize first letter and upper next letters of each word
+        if (mode.toLocaleUpperCase().charAt(0) == "M") {
+              var strg1 = strg;
+              reverse = attributes.get("reverse");
+              if (reverse == null) reverse = "false";
+              if (reverse.toLocaleUpperCase().charAt(0) == "T") var strg1 = strg.toLocaleUpperCase();
+              var i = strg1.lastIndexOf(".");
+              if (i != -1) {
+                 var sep = ".";
+              } else {
+                 i = strg1.lastIndexOf(" ");
+                 var sep = " ";
+              }
+              if (i != -1) {
+                 var tab = strg1.split(sep);
+                 for (i = 0; i &lt; tab.length; i++) {
+                     tab[i] = tab[i].charAt(0).toLocaleUpperCase() + tab[i].slice(1);
+                 var strg2 = tab.join(sep);
+                 }
+              }
+              else {
+                 var strg2 = strg1.charAt(0).toLocaleUpperCase() + strg1.slice(1);
+              }
+              project.setNewProperty( prty, strg2 );
+              project.setProperty( prty, strg2 );
+        }
+    </scriptdef>
+    <!-- ************************************************************************** -->
+    <!-- *********** Templating a property with character(s) (or blank) *********** -->
+    <!-- *********** at left or right of the text for new length        *********** -->
+    <!-- ************************************************************************** -->
+    <scriptdef name="extendProperty" language="javascript">
+        <attribute name="outputproperty"/>
+        <attribute name="string"/>
+        <attribute name="length"/>
+        <attribute name="character"/>
+        <attribute name="align"/>
+        prty = attributes.get("outputproperty");
+        lgth = attributes.get("length");
+        chrX = attributes.get("character");
+        strg = attributes.get("string");
+        algn = attributes.get("align");
+        var msk = "";
+        if (strg.length() > lgth) { var lgth = strg.length(); }
+        for (x = 0; x &lt; lgth; x++) { msk += chrX; }
+        if (algn.toLocaleUpperCase().charAt(0) == "R") { var newval = strg + msk.substring(0,lgth -= strg.length()); }
+        if (algn.toLocaleUpperCase().charAt(0) == "L") { var newval = msk.substring(0,lgth -= strg.length()) + strg; }
+        project.setNewProperty(prty, newval);
+        project.setProperty(prty, newval);
+    </scriptdef>
+
+    <target name="propertyFormat" description="default, not used">
+
+        <convertProperty outputproperty="myprop" string="aaa" mode="upper" reverse="false"/>
+
+        <extendProperty outputproperty="myprop" string="aaa" length="7" character="0" align="left"/>
+
+    </target>
+</project>

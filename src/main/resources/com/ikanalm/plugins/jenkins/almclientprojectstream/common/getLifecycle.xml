@@ -1,0 +1,271 @@
+<project name="getLifecycle" default="getLifecycle" basedir=".">
+    <description>Get a Lifecycle via Rest Api</description>
+    <!-- ************************************************** -->
+    <!-- Main target                                        -->
+    <!-- ************************************************** -->
+    <target name="getLifecycle" 
+        depends="initLifecycleProperties,resetLifecycleVariables,getOneLifecycle,getLifecycles,lifecycleXmlResult,lifecycleHtmlResult,setLifecycleInfo">
+        <fail message="ERROR: IKAN ALM Get Lifecycle cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="lifecycle_ignore"/> </not>
+                    <not> <isset property="lifecycle_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Main target Lifecycles List                        -->
+    <!-- ************************************************** -->
+    <target name="getLifecyclesList" depends="initLifecycleProperties,resetLifecycleVariables,getLifecycleLinks,getLifecycles,lifecycleLinksXmlResult,lifecycleHtmlResult">
+        <fail message="ERROR: IKAN ALM Get Lifecycle cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="lifecycles_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting Lifecycle access option                  -->
+    <!-- ************************************************** -->
+    <target name="initLifecycleProperties">
+	<property name="alm.stopOnError"      value="true"/>
+        <if> <equals arg1="${lifecycle.name}" arg2="" casesensitive="false"/>
+            <then> 
+            <var name="lifecycle.name" unset="true"/>
+            <property name="lifecycle_ignore" value="true"/>
+            </then>
+        </if>
+        <if> <equals arg1="${lifecycle.oid}" arg2="0"/>
+            <then> <var name="lifecycle.oid" unset="true"/> </then>
+        </if>
+        <if> <equals arg1="${lifecycle.link}" arg2=""/>
+            <then> <var name="lifecycle.link" unset="true"/> </then>
+        </if>
+    </target>
+
+    <target name="resetLifecycleVariables">
+        <var name="get.sortcolumn" unset="true"/>
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Lifecycle from Oid                         -->
+    <!-- ************************************************** -->
+    <target name="getLifecycleFromOid" if="lifecycle.oid">
+        <property name="get.almUrl"     value="${alm.apiUrl}/lifecycles/${lifecycle.oid}"/>
+        <property name="get.message"    value="Get Lifecycle Oid=${lifecycle.oid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Lifecycle from Link                        -->
+    <!-- ************************************************** -->
+    <target name="getLifecycleFromLink" if="lifecycle.link">
+        <property name="get.almUrl"     value="${lifecycle.link}"/>
+        <property name="get.message"    value="Get Lifecycle Link=${lifecycle.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Lifecycle from Name                        -->
+    <!-- ************************************************** -->
+    <target name="getLifecycleFromName" if="lifecycle.name">
+        <property name="get.almUrl"     value="${alm.apiUrl}/lifecycles?projectname=${project.name}&amp;name=${lifecycle.name}&amp;view=all&amp;page=1&amp;pagesize=10&amp;sortdirection=asc"/>
+        <property name="get.message"    value="Get Lifecycle Name=${lifecycle.name}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Lifecycle                                  -->
+    <!-- ************************************************** -->
+    <target name="getOneLifecycle" depends="getLifecycleFromOid,getLifecycleFromLink,getLifecycleFromName"/>
+    <!-- ************************************************** -->
+    <!-- Getting Lifecycles as a list of links              -->
+    <!-- ************************************************** -->
+    <target name="getLifecycleLinks">
+        <property name="get.sortcolumn" value=""/>
+        <condition property="sortcolumns" value="&amp;sortcolumn=${get.sortcolumn}" else="">
+            <not> <equals arg1="${get.sortcolumn}" arg2=""/> </not>
+        </condition>
+	<property name="lifecycle.name"    value=""/>
+	<property name="lifecycle.buildSuffix"    value=""/>
+        <var name="lifecycles" unset="true"/>
+        <property name="get.almUrl"     value="${alm.apiUrl}/lifecycles?projectname=${project.name}&amp;name=${lifecycle.name}&amp;view=links${sortcolumns}&amp;page=1&amp;pagesize=10000&amp;sortdirection=asc"/>
+        <property name="get.message"    value="Get Lifecycles=${project.name} ${lifecycles}"/>
+        <property name="get.almEntity"  value="${basedir}/temp/getLifecycleLinks"/>
+        <var name="sortcolumns" unset="true"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting Lifecycle(s)                               -->
+    <!-- ************************************************** -->
+    <target name="getLifecycles" if="get.almUrl">
+        <property name="get.almEntity"  value="${basedir}/temp/getLifecycle"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="404"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="lifecycleXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="/error/detail/text()"  property="almLog.detail" append="true"/>
+            <copy path="//lifecycles/@count"  property="lifecycles_count"/>
+            <copy path="//lifecycle/link/@href" property="lifecycle.link"/>
+            <copy path="//lifecycle/id/text()" property="lifecycle_URN"/>
+            <copy path="//lifecycle/description/text()" property="lifecycle_DESCRIPTION"/>
+            <copy path="//lifecycle/is-base/text()" property="lifecycle_ISBASE"/>
+            <copy path="//lifecycle/project/id/text()" property="project_OID"/>
+            <copy path="//lifecycle/project/link/@href" property="project.link"/>
+            <copy path="//lifecycle/lifecycle-name/text()" property="lifecycle_NAME"/>
+        </xmltask>
+        <property name="lifecycles_count" value="1"/> <!-- If get by Oid or Link -->
+        <condition property="task.resultMessage" value="Message=No Lifecycle for the project">
+            <and>
+            <equals arg1="${lifecycles_count}" arg2="0"/>
+            <not> <isset property="almLog.result"/> </not>
+            </and>
+        </condition>
+        <if> <isset property="lifecycle_URN"/>
+            <then>
+                <propertyregex property="lifecycle_OID"
+                      input="${lifecycle_URN}" casesensitive="false"
+                      regexp="urn\:alm\:lifecycle\:([0-9]+)\:.*" select="\1"/>
+            </then>
+        </if>
+        <property name="almLog.result" value="Not found"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="lifecycle_OID"/> </not>
+        </condition>
+        <condition property="lifecycle_found" value="true">
+            <isset property="lifecycle_OID"/>
+        </condition>
+        <property name="lifecycle_OID"     value="0"/>
+        <property name="lifecycle.oid"     value="${lifecycle_OID}"/>
+        <!-- -->
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Lifecycle=${lifecycle.name}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${lifecycles_count}" arg2="1"/> </not>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML response file                   -->
+    <!-- ************************************************** -->
+    <target name="lifecycleLinksXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="//lifecycles/@count"  property="lifecycles_count"/>
+            <copy path="//lifecycles/link[@title='Lifecycle']/@href" property="lifecycles_links" append="true" propertySeparator=","/>
+        </xmltask>
+        <property name="lifecycles_count" value="0"/>
+        <condition property="task.resultMessage" value="Message=No Lifecycle for the project">
+            <equals arg1="${lifecycles_count}" arg2="0"/>
+        </condition>
+        <condition property="task.resultMessage" value="Message=${almLog.result}">
+            <not> <isset property="lifecycles_links"/> </not>
+        </condition>
+        <condition property="lifecycles_found" value="true">
+            <isset property="lifecycles_links"/>
+        </condition>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Lifecycle=${lifecycles_links}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <islessthan arg1="${lifecycles_count}" arg2="1"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Project Stream Info                                -->
+    <!-- ************************************************** -->
+    <target name="setLifecycleInfo" if="lifecycle_found">
+        <var name="project.oid"         value="${project_OID}"/>
+        <var name="lifecycle.name"       value="${lifecycle_NAME}"/>
+        <var name="lifecycle.description" value="${lifecycle_DESCRIPTION}"/>
+        <var name="lifecycle.isbase" value="${lifecycle_ISBASE}"/>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="lifecycleHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+</project>

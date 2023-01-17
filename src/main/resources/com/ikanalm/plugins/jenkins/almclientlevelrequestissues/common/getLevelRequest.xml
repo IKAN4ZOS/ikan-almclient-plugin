@@ -1,0 +1,229 @@
+<project name="getLevelRequest" default="getLevelRequest" basedir=".">
+    <description>Get a LevelRequest with Oid or with Project, Stream, Level and Package (if there is) via Rest Api</description>
+    <!-- ************************************************** -->
+    <!-- Main target                                        -->
+    <!-- ************************************************** -->
+    <target name="getLevelRequest" depends="initLevelRequestProperties,resetLevelRequestVariables,getOneLevelRequest,levelRequestXmlResult,levelRequestHtmlResult">
+        <fail message="ERROR: IKAN ALM Get LevelRequest cannot be done correctly.">
+            <condition>
+                <and>
+                    <not> <isset property="lr_found"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+        <antcall target="resetLevelRequestVariables"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Selecting LevelRequest access option               -->
+    <!-- ************************************************** -->
+    <target name="initLevelRequestProperties">
+	<property name="alm.stopOnError"      value="true"/>
+        <condition property="levelrequest.oid" value="${levelRequestOid}">
+            <and>
+                <isset property="levelRequestOid"/>
+                <not> <equals arg1="${levelRequestOid}" arg2=""/> </not>
+                <not> <equals arg1="${levelRequestOid}" arg2="0"/> </not>
+            </and>
+        </condition>
+        <if> <equals arg1="${levelrequest.link}" arg2=""/>
+            <then> <var name="levelrequest.link" unset="true"/> </then>
+        </if>
+        <var name="readETag"  unset="true"/>
+        <condition property="readETag" value="true">
+            <or>
+                <isset property="levelrequest.oid"/>
+                <isset property="levelrequest.link"/>
+            </or>
+        </condition>
+    </target>
+    <target name="resetLevelRequestVariables">
+        <var name="get.almEntity"  unset="true"/>
+        <var name="get.almLogfile" unset="true"/>
+        <var name="get.almUrl"     unset="true"/>
+        <var name="get.message"    unset="true"/>
+        <var name="task.status"    unset="true"/>
+        <var name="task.message"   unset="true"/>
+        <var name="task.result"    unset="true"/>
+        <var name="task.resultMessage"   unset="true"/>
+        <var name="xmlLog.file"    unset="true"/>
+        <var name="xmlResult.log"  unset="true"/>
+        <var name="xmlResponse"    unset="true"/>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Getting a LevelRequest from Oid                    -->
+    <!-- ************************************************** -->
+    <target name="getLevelRequestFromOid" if="levelrequest.oid">
+        <property name="get.almUrl"     value="${alm.apiUrl}/levelrequests/${levelrequest.oid}"/>
+        <property name="get.message"    value="Get LevelRequest Oid=${levelrequest.oid}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting a LevelRequest from Oid                    -->
+    <!-- ************************************************** -->
+    <target name="getLevelRequestFromLink" if="levelrequest.link">
+        <property name="get.almUrl"     value="${levelrequest.link}"/>
+        <property name="get.message"    value="Get LevelRequest Link=${levelrequest.link}"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting last LevelRequest of Project,Stream,Level,.-->
+    <!-- ************************************************** -->
+    <target name="getLastLevelRequest" unless="levelrequest.oid">
+        <if> <equals arg1="${packageName}" arg2=""/>
+            <then>
+                <property name="get.almUrl"     value="${alm.apiUrl}/levelrequests?levelname=${levelName}&amp;page=1&amp;pagesize=10;&amp;projectname=${projectName}&amp;projectstreamprefix=${projectStreamPrefix}&amp;projectstreamsuffix=${projectStreamSuffix}&amp;resultlimit=1&amp;sortdirection=desc"/>
+            </then>
+            <else>
+                <property name="get.almUrl"     value="${alm.apiUrl}/levelrequests?levelname=${levelName}&amp;packagename=${packageName}&amp;page=1&amp;pagesize=10;&amp;resultlimit=1&amp;sortdirection=desc"/>
+            </else>
+        </if>
+        <property name="get.message"    value="Get Last LevelRequest"/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Getting LevelRequest                               -->
+    <!-- ************************************************** -->
+    <target name="getOneLevelRequest" if="get.almUrl" depends="getLevelRequestFromOid,getLevelRequestFromLink,getLastLevelRequest">
+        <property name="get.almEntity"  value="${basedir}/temp/getLevelRequest"/>
+        <property name="get.almLogfile" value="${get.almEntity}_log.xml"/>
+        <property name="get.headers"    value="${get.almEntity}_headers.xml"/>
+        <var name="get.status"    unset="true"/>
+        <http url="${get.almUrl}"
+            method="GET" expected="200" failonunexpected="false" statusProperty="get.status"
+            printrequest="false" printresponse="false"
+            printrequestheaders="false" printresponseheaders="false"
+            outfile="${get.almLogfile}" outheadersfile="${get.headers}">
+            <headers>
+                <header name="Accept" value="application/xml"/>
+                <header name="Cookie" value="${almCookie.key}=${almCookie.text}"/>
+            </headers>
+        </http>
+        <property name="task.status"   value="${get.status}"/>
+        <property name="task.message"  value="${get.message}"/>
+        <property name="xmlLog.file"   value="${get.almLogfile}"/>
+        <condition property="xmlResponse" value="true">
+            <islessthan arg1="${task.status}" arg2="400"/>
+        </condition>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the XML/HTML response file              -->
+    <!-- ************************************************** -->
+    <target name="levelRequestXmlResult" if="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <xmltask source="${xmlLog.file}">
+            <copy path="//error/message/text()"  property="almLog.result"/>
+            <copy path="/error/validation-errors/validation-error/field/text()"  property="almLog.detail"/>
+            <copy path="/error/validation-errors/validation-error/error/text()"  property="almLog.detail2"/>
+            <copy path="//error/detail/text()"  property="almLog.detail"/>
+            <copy path="//levelrequest/id/text()" property="LR_OID_URN"/>
+            <copy path="//levelrequest/description/text()" property="LR_DESCRIPTION"/>
+            <copy path="//levelrequest/action-type/id/text()" property="LR_ACTION"/>
+            <copy path="//levelrequest/action-type/text/text()" property="LR_ACTIONTYPE"/>
+            <copy path="//levelrequest/status/id/text()"   property="LR_STATUS"/>
+            <copy path="//levelrequest/status/text/text()"   property="LR_STATUSNAME"/>
+            <copy path="//levelrequest/vcr-tag/text()"   property="LR_VCRTAG"/>
+            <copy path="//levelrequest/project/id/text()"   property="LR_PROJECT"/>
+            <copy path="//levelrequest/project/link/@href"   property="LR_PROJECT_LINK"/>
+            <copy path="//levelrequest/projectstream/id/text()"   property="LR_PROJECTSTREAM"/>
+            <copy path="//levelrequest/projectstream/link/@href"   property="LR_PROJECTSTREAM_LINK"/>
+            <copy path="//levelrequest/package/id/text()"   property="LR_PACKAGE"/>
+            <copy path="//levelrequest/package/link/@href"   property="LR_PACKAGE_LINK"/>
+            <copy path="//levelrequest/level-id/text()"   property="LR_LEVEL"/>
+            <copy path="//levelrequest/level-name/text()"   property="LR_LEVELNAME"/>
+            <copy path="//levelrequest/build-number/text()"   property="LR_BUILDNUMBER"/>
+            <copy path="//levelrequest/created-by-user/id/text()"   property="LR_CREATEDBYUSER"/>
+            <copy path="//levelrequest/created-by-user/link/@href"   property="LR_CREATEDBYUSER_LINK"/>
+            <copy path="//levelrequest/created-on-datetime/text()"   property="LR_CREATEDDATETIME"/>
+            <copy path="//levelrequest/end-datetime/text()"   property="LR_ENDDATETIME"/>
+            <copy path="//levelrequest/requested-datetime/text()"   property="LR_REQUESTEDDATETIME"/>
+            <copy path="//levelrequest/start-datetime/text()"   property="LR_STARTDATETIME"/>
+        </xmltask>
+        <if> <equals arg1="${task.status}" arg2="200"/>
+            <then> 
+                <property name="levelrequests_count"  value="1"/>
+                <var name="almETag.text"   unset="true"/>
+                <antfetch target="levelrequestETag" return="almETag.text"/>
+                <property name="almETag-LevelRequest.text"     value="${almETag.text}"/>
+            </then>
+        </if>
+        <if> <isset property="LR_OID_URN"/>
+            <then>
+                <propertyregex property="LR_OID"
+                      input="${LR_OID_URN}" casesensitive="false"
+                      regexp="urn\:alm\:levelrequest\:([0-9]+)\:.*" select="\1"/>
+            </then>
+        </if>
+        <property name="almLog.result" value="Not found"/>
+        <property name="almLog.detail" value=""/>
+        <property name="almLog.detail2" value=""/>
+        <condition property="task.resultMessage" value="Message=${almLog.result} ${almLog.detail} ${almLog.detail2}">
+            <not> <isset property="LR_OID"/> </not>
+        </condition>
+        <condition property="lr_found" value="true">
+            <isset property="LR_OID"/>
+        </condition>
+        <condition property="existLevelRequest" value="true">
+            <isset property="LR_OID"/>
+        </condition>
+        <property name="LR_OID"     value="0"/>
+        <property name="levelrequest.oid"     value="${LR_OID}"/>
+        <property name="LR_STATUS"     value="0"/>
+        <property name="LR_STATUSNAME"    value="Waiting unknown"/>
+        <property name="task.result" value="${almLog.result}"/>
+        <property name="task.resultMessage" value="Status=${LR_STATUSNAME}"/>
+
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <and>
+                <istrue value="${alm.stopOnError}"/>
+                <not> <equals arg1="${task.status}" arg2="200"/> </not>
+                </and>
+            </condition>
+        </fail>
+
+        <property name="LR_CREATEDDATETIME"   value=""/>
+        <property name="LR_ENDDATETIME"       value=""/>
+        <property name="LR_REQUESTEDDATETIME" value=""/>
+        <property name="LR_STARTDATETIME"     value=""/>
+    </target>
+    <!-- ************************************************** -->
+    <!-- Looking at the HTML response file                  -->
+    <!-- ************************************************** -->
+    <target name="levelRequestHtmlResult" if="get.almUrl" unless="xmlResponse">
+        <var name="almLog.result" unset="true"/>
+        <property name="almLog.result" value="Not found"/>
+        <property name="task.resultMessage" value="Message=${almLog.result}"/>
+        <echo message="${task.message} status=${task.status} ${task.resultMessage}"/>
+        <loadfile property="xmlResult.log" srcFile="${xmlLog.file}" encoding="UTF-8"/>
+        <echo message="${task.message} log:${xmlResult.log}" level="info"/>
+
+        <fail message="ERROR: IKAN ALM ${task.message} cannot be done correctly.">
+            <condition>
+                <istrue value="${alm.stopOnError}"/>
+            </condition>
+        </fail>
+    </target>
+
+    <!-- ************************************************** -->
+    <!-- Searching at the Etag response header parameter    -->
+    <!-- ************************************************** -->
+    <target name="levelrequestETag" if="readETag">
+        <var name="alm_headers"  unset="true"/>
+        <loadfile property="alm_headers" srcfile="${get.headers}"/>
+        <var name="almETag.text" unset="true"/>
+        <propertyregex property="almETag.text"
+              input="${alm_headers}" casesensitive="false"
+              regexp="ETag\:\ (\&quot;[\w]+\&quot;)" select="\1"/>
+        <fail message="ERROR: ETag response header parameter is not found!">
+            <condition>
+                <and>
+                    <not> <isset property="almETag.text"/> </not>
+                    <istrue value="${alm.stopOnError}"/>
+                </and>
+            </condition>
+        </fail>
+    </target>
+</project>

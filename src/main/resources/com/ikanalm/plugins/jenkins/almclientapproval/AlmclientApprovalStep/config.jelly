@@ -1,0 +1,83 @@
+
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core"
+	xmlns:st="jelly:stapler"
+	xmlns:d="jelly:define" 
+	xmlns:l="/lib/layout" 
+	xmlns:t="/lib/hudson"
+	xmlns:f="/lib/form">
+
+    <f:entry title="${%alm.baseUrl}" field="almBaseUrl">
+        <f:textbox default="http://IKAN000:8080/alm"/>
+    </f:entry>
+
+    <f:entry title="${%alm.levelRequest.levelName}" field="almLevelRequestLevelName">
+        <f:textbox default="$levelName"/>
+    </f:entry>
+
+    <f:entry title="${%alm.levelRequest.oid}" field="almLevelRequestOid">
+        <f:textbox />
+    </f:entry>
+
+    <f:entry title="${%alm.package.name}" field="almPackageName">
+        <f:textbox default="$packageName"/>
+    </f:entry>
+
+    <f:entry title="${%alm.project.name}" field="almProjectName">
+        <f:textbox default="$projectName"/>
+    </f:entry>
+
+    <f:entry title="${%alm.projectStream.buildPrefix}" field="almProjectStreamBuildPrefix">
+        <f:textbox default="$buildPrefix"/>
+    </f:entry>
+
+    <f:entry title="${%alm.projectStream.buildSuffix}" field="almProjectStreamBuildSuffix">
+        <f:textbox default="$buildSuffix"/>
+    </f:entry>
+
+    <f:entry title="${%alm.rest.password}" field="almRestPassword">
+        <f:password/>
+    </f:entry>
+
+    <f:entry title="${%alm.rest.userid}" field="almRestUserid">
+        <f:password/>
+    </f:entry>
+
+    <f:entry title="${%alm.stopOnError}" field="almStopOnError">
+        <select name="almStopOnError">
+             <option value="true">true</option>
+             <option value="false">false</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%antInstallation}" field="antInstallation">
+        <f:select/>
+    </f:entry>
+
+    <f:entry title="${%approveLevelRequest}" field="approveLevelRequest">
+        <select name="approveLevelRequest">
+             <option value="true">true</option>
+             <option value="false">false</option>
+             <option value="ignore">ignore</option>
+
+	</select>
+    </f:entry>
+
+    <f:entry title="${%approveReason}" field="approveReason">
+        <f:textbox />
+    </f:entry>
+
+    <f:entry title="${%builderName}" field="builderName">
+        <f:textbox default="Client"/>
+    </f:entry>
+
+    <f:entry title="${%levelRequest_access}" field="levelRequestAccess">
+        <select name="levelRequestAccess">
+             <option value="lroid">lroid</option>
+             <option value="level">level</option>
+
+	</select>
+    </f:entry>
+
+</j:jelly>
