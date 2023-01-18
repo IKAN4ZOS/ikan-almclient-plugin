@@ -21,10 +21,6 @@ The following are required to use this plugin:
 * IKAN ALM Base Plugin
 * IKAN ALM Client RestAPI Plugin
 
-## Agreement and changes
-
-* [Plugins License](https://www.ikanalm.com/PluginPlusLicense "Plugins License")
-* [Changes Log](./CHANGELOG.md)
 
 ## Installing in a Builder Instance
 
