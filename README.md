@@ -4,7 +4,13 @@
 
 ## Overview
 
-The ALM Client RestAPI plugin allows Builder’s Users to execute IKAN ALM Rest API main functionalities, such as Create Level Request or Project Stream or Package on IKAN ALM Projects and Approve or Reject a Level Request and list Level Request Issues. Users can manage IKAN ALM Build and Deploy processes and other tasks with their Builder Software. 
+The ALM Client RestAPI plugin allows Builder’s Users to execute IKAN ALM main Rest API's, such as:
+Create Level Request
+Project Stream 
+Package
+Approve or Reject a Level Request
+List Level Request Issues.
+Thes will aloow users to run IKAN ALM Build and Deploy requests and other tasks with their Builder Software. 
 
 ## Prerequisites
 
@@ -32,7 +38,7 @@ and Advanced settings for selecting each hpi file in the Deploy plugin part of t
 
 Second method from ‘Available plugins’:
 
-- Install the ALM Base Plugin using the ‘Available plugins’ in your Builder Software, firstly.
+- Install the ALM Base Plugin using the ‘Available plugins’ in your Builder Software, first.
 - Install the ALM Client RestAPI Plugin using the ‘Available plugins’ in your Builder Software, next.
 - Ask the last Pipeline models to [IKAN site](https://www.ikan.be "IKAN") using our *Contact us* menu or by our ALM Support <support@ikanalm.com>. 
 
@@ -53,7 +59,7 @@ Set the variables as:
 	Value	C:\Jenkins\almPluginBase
 ---
 
-The **almSystem_location** parameter must have the location where the JENKINS-solution_ALMCLIENT archive has been unzipped with the *almPluginsBase* folder. If you don’t use this archive, you create this folder somewhere in your Server. Next you create a *Pipelines* folder for putting provided pipeline models.
+The **almSystem_location** parameter must have the location where the JENKINS-solution_ALMCLIENT archive has been unzipped with the *almPluginsBase* folder. If you don’t use this archive, you create this folder somewhere in your Server. Next you create a *Pipelines* folder for storing provided pipeline models.
 
 ### Manage Plugins
 
@@ -84,7 +90,7 @@ Add if not: 	‘ANT’ Installation
 
 ## Executing IKAN ALM Client Rest API activities
 
-Create a ‘Pipeline’ project and use the corresponding Pipeline script model provided in the archive for working.
+Create a ‘Pipeline’ project and use the corresponding Pipeline script model provided in the archive.
 
 	- almPipeline_almclientApproval.groovy
 	- almPipeline_almclientLevelRequest.groovy
@@ -92,8 +98,8 @@ Create a ‘Pipeline’ project and use the corresponding Pipeline script model 
 	- almPipeline_almclientPackage.groovy
 	- almPipeline_almclientProjectStream.groovy
 
-These pipelines are prepared for managing all parameters used by the task to run.
-First, you set correct values of:
+These pipelines are prepared to manage all parameters used by the task to run.
+First, you set correct values for:
 
 ```
 	def antInstallation = 'ANT-1.10.10'
@@ -102,7 +108,7 @@ First, you set correct values of:
 
 Next, each parameter is defined with or without ‘//’ (groovy comment).  
 When a parameter is commented, it must be defined in the Parameters of the Project with valid structure.  
-(Choice, Password, String, etc.). Other parameters are fixed in the pipeline for the steps.
+(Choice, Password, String, etc.). Other parameters are "hard coded" in the pipeline for the steps.
 
 ## Using Pipeline Syntax to Generate Pipeline Script
 
@@ -233,18 +239,16 @@ pipeline {
 
 ```
 
-# Product support
+# Product Documentation
 
-IKAN helps with customers with its documentation, the Documentation support web site, and telephone customer support.
+All IKANALM product documentation can be found here: https://docs.ikanalm.com/
 
-## Support Web Site
+IKAN ALM REST API v1 Documentation: https://docs.ikanalm.com/rest-api/5.9/RESTAPI_Overview.html
 
-You can access online information for IKAN ALM product via our Frontline support site at IKAN ALM REST API v1 [IKAN ALM Documentation](https://docs.ikanalm.com/rest-api/5.9/RESTAPI_Overview.html "IKAN ALM Documentation").  
-IKAN ALM Documentation provides access to critical information about your IKAN ALM product. You can, read or download documentation, access product fixes, or e-mail your questions or comments. The documentation is free of registration.
 
 ## Contacting Customer Support
 
-At IKAN, we make our products and documentation like the industry. Feedback from our customers helps us maintain our quality. If you need support services, please obtain the following information before calling IKAN’s support. This information is displayed in the *Contact us* dialog box:
+If you need support services, please collect the following information before contacting IKAN’s support:  
 
 * Your name, your e-mail, the subject will contain the name, release number of your product.
 * the message will contain if necessary:
@@ -253,15 +257,9 @@ At IKAN, we make our products and documentation like the industry. Feedback from
     - The location of the problem within the running application and the user actions taken before the problem occurred.
     - The exact application, licensing, or operating system error messages, if any.
 
-You can contact IKAN in one of the following ways:
+You can report issues via following email: support@ikanalm.com
 
-### Phone
-* Belgium: +32 15 44 50 40.
-### Web
-You can report issues via ALM Support: <support@ikanalm.com>.
-
-**Note:** Please report all high-priority issues by phone.
 
 ### Corporate Web Site
 
-To access IKAN's site on the Web, go to <https://www.ikan.be>. The IKAN site provides a variety of product and support information.
+To access IKAN's site visit: https://www.ikanalm.com/ 
