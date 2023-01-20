@@ -10,7 +10,7 @@ Project Stream
 Package
 Approve or Reject a Level Request
 List Level Request Issues.
-Thes will aloow users to run IKAN ALM Build and Deploy requests and other tasks with their Builder Software. 
+This will allow users to run IKAN ALM Build and Deploy requests and other tasks with their Builder Software. 
 
 ## Prerequisites
 
