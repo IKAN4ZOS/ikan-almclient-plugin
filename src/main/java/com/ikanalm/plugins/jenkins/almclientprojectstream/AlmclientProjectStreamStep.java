@@ -8,8 +8,7 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 
-import com.ikanalm.plugins.jenkins.base.BaseAntStep;
-import com.ikanalm.plugins.jenkins.utils.Utils;
+import com.ikanalm.plugins.base.steps.BaseAntStep;
 
 import hudson.Extension;
 import hudson.Util;

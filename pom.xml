@@ -7,7 +7,7 @@
         <version>4.52</version>
         <relativePath />
     </parent>
-    <groupId>com.ikanalm.plugins.jenkins</groupId>
+    <groupId>com.ikanalm.plugins</groupId>
     <artifactId>ikan-almclient</artifactId>
     <version>2.1.0-SNAPSHOT</version>
     <name>ALM Client RestAPI Plugin</name>
@@ -16,7 +16,6 @@
     <properties>
         <jenkins.version>2.361.4</jenkins.version>
         <java.level>11</java.level>
-        <almbase-plugin>ikan-almbase-plugin</almbase-plugin>
         <almbase-plugin.version>1.0.0-SNAPSHOT</almbase-plugin.version>
     </properties>
     <licenses>
@@ -32,30 +31,34 @@
         <url>https://github.com/jenkinsci/ikan-almclient-plugin</url>
     </scm>
     <!-- -->
+
     <dependencies>
         <dependency>
-		    <groupId>com.ikanalm.plugins.jenkins</groupId>
-		    <artifactId>${almbase-plugin}</artifactId>
+		    <groupId>com.ikanalm.plugins</groupId>
+		    <artifactId>ikan-almbase</artifactId>
 		    <version>${almbase-plugin.version}</version>
         </dependency>
     </dependencies>
+
     <repositories>
         <repository>
             <id>repo.jenkins-ci.org</id>
             <url>https://repo.jenkins-ci.org/public/</url>
         </repository>
         <repository>
-          <id>snapshots</id>
+          <id>ikan-libs-snapshots</id>
           <name>IKAN Artifactory-snapshots</name>
           <url>http://ikan550v.ikan.local:8081/artifactory/libs-snapshot-local</url>
         </repository>
     </repositories>
+
     <pluginRepositories>
         <pluginRepository>
             <id>repo.jenkins-ci.org</id>
             <url>https://repo.jenkins-ci.org/public/</url>
         </pluginRepository>
     </pluginRepositories>
+
     <build>
     	<plugins>
 		<plugin>
@@ -66,11 +69,12 @@
 				<finalName>resources</finalName>
 				<outputDirectory>${project.build.outputDirectory}</outputDirectory>
 				<descriptors>
-                                  <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientapproval-resources.xml</descriptor>
-                                  <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientlevelrequestissues-resources.xml</descriptor>
-                                  <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientlevelrequest-resources.xml</descriptor>
-                                  <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientpackage-resources.xml</descriptor>
-                                  <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientprojectstream-resources.xml</descriptor></descriptors>
+	              <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientapproval-resources.xml</descriptor>
+	              <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientlevelrequestissues-resources.xml</descriptor>
+	              <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientlevelrequest-resources.xml</descriptor>
+	              <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientpackage-resources.xml</descriptor>
+	              <descriptor>src/assembly/com.ikanalm.plugins.jenkins.almclientprojectstream-resources.xml</descriptor>
+	            </descriptors>
 			</configuration>
 			<executions>
 				<execution>
@@ -83,4 +87,5 @@
 		</plugin>
     	</plugins>
     </build>
+    
 </project>

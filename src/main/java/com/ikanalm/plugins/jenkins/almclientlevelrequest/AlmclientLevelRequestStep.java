@@ -8,8 +8,7 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 
-import com.ikanalm.plugins.jenkins.base.BaseAntStep;
-import com.ikanalm.plugins.jenkins.utils.Utils;
+import com.ikanalm.plugins.base.steps.BaseAntStep;
 
 import hudson.Extension;
 import hudson.Util;
@@ -116,7 +115,7 @@ public class AlmclientLevelRequestStep extends BaseAntStep {
          */
         public ListBoxModel doFillAntInstallationItems() {
             ListBoxModel items = new ListBoxModel();
-        	AntInstallation[] antInstallations = Jenkins.getInstance().getDescriptorByType(Ant.DescriptorImpl.class).getInstallations();
+        	AntInstallation[] antInstallations = Jenkins.getInstanceOrNull().getDescriptorByType(Ant.DescriptorImpl.class).getInstallations();
             
         	for (AntInstallation antInstallation : antInstallations) {
 				items.add(antInstallation.getName());
